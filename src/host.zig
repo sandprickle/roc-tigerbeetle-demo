@@ -2,14 +2,13 @@
 const std = @import("std");
 const abi = @import("roc_platform_abi.zig");
 
-/// Host environment
+/// Host environment. Embeds `abi.RocEnv` so the Roc runtime sees a pointer
+/// to a standard `RocEnv` while hosted functions can recover the full
+/// `HostEnv` via `@fieldParentPtr`.
 const HostEnv = struct {
     gpa: std.heap.GeneralPurposeAllocator(.{}),
     stdin_reader: std.fs.File.Reader,
-
-    pub fn allocator(self: *HostEnv) std.mem.Allocator {
-        return self.gpa.allocator();
-    }
+    roc_env: abi.RocEnv,
 };
 
 // OS-specific entry point handling (not exported during tests)
@@ -36,20 +35,22 @@ fn main(argc: c_int, argv: [*][*:0]u8) callconv(.c) c_int {
 
 /// Hosted function: Stderr.line! (index 0 - sorted alphabetically)
 fn hostedStderrLine(ops: *abi.RocOps, ret_ptr: *anyopaque, args_ptr: *const abi.StderrLineArgs) callconv(.c) void {
-    _ = ops;
     _ = ret_ptr; // Return value is {} which is zero-sized
 
     const message = args_ptr.arg0.asSlice();
     const stderr: std.fs.File = .stderr();
     stderr.writeAll(message) catch {};
     stderr.writeAll("\n") catch {};
+
+    args_ptr.arg0.decref(ops);
 }
 
 /// Hosted function: Stdin.line! (index 1 - sorted alphabetically)
 fn hostedStdinLine(ops: *abi.RocOps, ret_ptr: *abi.RocStr, args_ptr: *anyopaque) callconv(.c) void {
     _ = args_ptr; // Argument is {} which is zero-sized
 
-    const host: *HostEnv = @ptrCast(@alignCast(ops.env));
+    const roc_env: *abi.RocEnv = @ptrCast(@alignCast(ops.env));
+    const host: *HostEnv = @fieldParentPtr("roc_env", roc_env);
     var reader = &host.stdin_reader.interface;
 
     var line = while (true) {
@@ -82,13 +83,14 @@ fn hostedStdinLine(ops: *abi.RocOps, ret_ptr: *abi.RocStr, args_ptr: *anyopaque)
 
 /// Hosted function: Stdout.line! (index 2 - sorted alphabetically)
 fn hostedStdoutLine(ops: *abi.RocOps, ret_ptr: *anyopaque, args_ptr: *const abi.StdoutLineArgs) callconv(.c) void {
-    _ = ops;
     _ = ret_ptr; // Return value is {} which is zero-sized
 
     const message = args_ptr.arg0.asSlice();
     const stdout: std.fs.File = .stdout();
     stdout.writeAll(message) catch {};
     stdout.writeAll("\n") catch {};
+
+    args_ptr.arg0.decref(ops);
 }
 
 /// Platform host entrypoint
@@ -98,9 +100,14 @@ fn platform_main(argc: usize, argv: [*][*:0]u8) c_int {
     var host_env = HostEnv{
         .gpa = std.heap.GeneralPurposeAllocator(.{}){},
         .stdin_reader = std.fs.File.stdin().reader(&stdin_buffer),
+        .roc_env = undefined,
+    };
+    host_env.roc_env = .{
+        .allocator = host_env.gpa.allocator(),
+        .roc_io = abi.RocIo.default(),
     };
 
-    var roc_ops = abi.makeRocOps(HostEnv, &host_env, abi.hostedFunctions(.{
+    var roc_ops = abi.makeRocOps(&host_env.roc_env, abi.hostedFunctions(.{
         .stderr_line = &hostedStderrLine,
         .stdin_line = &hostedStdinLine,
         .stdout_line = &hostedStdoutLine,
