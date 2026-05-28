@@ -311,9 +311,9 @@ pub fn RocListWith(comptime T: type, comptime elements_refcounted: bool) type {
 
         /// Return true if this list is a seamless slice into another allocation.
         /// Slices share the rc slot with their backing allocation; the alloc ptr is
-        /// encoded in `capacity_or_alloc_ptr` with the high bit set.
+        /// encoded in `capacity_or_alloc_ptr` with the low bit set.
         pub fn isSeamlessSlice(self: Self) bool {
-            return @as(isize, @bitCast(self.capacity_or_alloc_ptr)) < 0;
+            return (self.capacity_or_alloc_ptr & 1) != 0;
         }
 
         /// Return an empty RocList.
@@ -326,7 +326,7 @@ pub fn RocListWith(comptime T: type, comptime elements_refcounted: bool) type {
         /// whole-backing and seamless-slice forms.
         fn getAllocationPtr(self: Self) ?[*]u8 {
             if (self.isSeamlessSlice()) {
-                return @as(?[*]u8, @ptrFromInt(self.capacity_or_alloc_ptr << 1));
+                return @as(?[*]u8, @ptrFromInt(self.capacity_or_alloc_ptr & ~@as(usize, 1)));
             }
             const ptr = self.elements_ptr orelse return null;
             return @ptrCast(ptr);
@@ -350,7 +350,7 @@ pub fn RocListWith(comptime T: type, comptime elements_refcounted: bool) type {
             return .{
                 .elements_ptr = @ptrCast(@alignCast(data_ptr)),
                 .length = length,
-                .capacity_or_alloc_ptr = length,
+                .capacity_or_alloc_ptr = length << 1,
             };
         }
 
