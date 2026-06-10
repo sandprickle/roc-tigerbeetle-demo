@@ -29,9 +29,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Zig
-        uses: mlugg/setup-zig@8d6198c65fb0feaa111df26e6b467fea8345e46f # v2.0.5
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
-          version: 0.15.2
+          version: 0.16.0
           use-cache: false
 
       - name: Clone Roc source
@@ -111,9 +111,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Zig
-        uses: mlugg/setup-zig@8d6198c65fb0feaa111df26e6b467fea8345e46f # v2.0.5
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
-          version: 0.15.2
+          version: 0.16.0
           use-cache: false
 
       - name: Clone Roc source
@@ -218,7 +218,7 @@ jobs:
             "$BUNDLE_FILE" \
             --title "${{ github.event.inputs.release_tag }}" \
             --generate-notes \
-            --notes "Platform bundle built with Zig 0.15.2 and Roc $ROC_COMMIT"
+            --notes "Platform bundle built with Zig 0.16.0 and Roc $ROC_COMMIT"
 
           echo "Release created: ${{ github.event.inputs.release_tag }}"
           echo "Bundle uploaded: $BUNDLE_FILE"

@@ -153,6 +153,7 @@ print! = |something| {
 	Stdout.line!(Str.inspect(something))
 }
 
+dbg_keyword : () -> I64
 dbg_keyword = || {
 	foo = 42
 
@@ -200,6 +201,7 @@ tuple_demo =
 type_var : List(a) -> List(a)
 type_var = |lst| lst
 
+destructuring : () -> (Str, I64, I64, Str)
 destructuring = || {
     tup = ("Roc", 1)
     (str, num) = tup

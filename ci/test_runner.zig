@@ -4,21 +4,21 @@ const Allocator = std.mem.Allocator;
 
 var verbose: bool = false;
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+pub fn main(init: std.process.Init) !void {
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
+    const io = init.io;
 
-    const stdout_file: std.fs.File = .stdout();
-    const stderr_file: std.fs.File = .stderr();
+    const stdout_file = std.Io.File.stdout();
+    const stderr_file = std.Io.File.stderr();
     var stdout_buf: [4096]u8 = undefined;
     var stderr_buf: [4096]u8 = undefined;
-    var stdout = stdout_file.writer(&stdout_buf);
-    var stderr = stderr_file.writer(&stderr_buf);
+    var stdout = stdout_file.writer(io, &stdout_buf);
+    var stderr = stderr_file.writer(io, &stderr_buf);
 
     // Parse args
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     for (args[1..]) |arg| {
         if (std.mem.eql(u8, arg, "--verbose") or std.mem.eql(u8, arg, "-v")) {
@@ -27,7 +27,7 @@ pub fn main() !void {
     }
 
     // Get roc version
-    const version_result = runCommand(allocator, &.{ "roc", "version" }, null) catch |err| {
+    const version_result = runCommand(allocator, io, &.{ "roc", "version" }, null) catch |err| {
         try stderr.interface.print("Failed to run 'roc version': {}\n", .{err});
         try stderr.interface.flush();
         std.process.exit(1);
@@ -55,12 +55,12 @@ pub fn main() !void {
     var test_passed: usize = 0;
     var test_failed: usize = 0;
 
-    var failed_tests = std.ArrayListUnmanaged(FailedTest){};
+    var failed_tests: std.ArrayListUnmanaged(FailedTest) = .empty;
     defer failed_tests.deinit(allocator);
 
     // Run all test cases
     for (test_cases) |tc| {
-        const result = runTestRuntime(allocator, tc);
+        const result = runTestRuntime(allocator, io, tc);
         const category = tc.category();
 
         if (result.err) |err| {
@@ -277,28 +277,28 @@ const test_cases = [_]TestCase{
 };
 
 /// Runtime version that catches errors and returns them in the result
-fn runTestRuntime(allocator: Allocator, tc: TestCase) TestResult {
-    return runTest(allocator, tc) catch |err| {
+fn runTestRuntime(allocator: Allocator, io: std.Io, tc: TestCase) TestResult {
+    return runTest(allocator, io, tc) catch |err| {
         return .{ .success = false, .err = err };
     };
 }
 
-fn runTest(allocator: Allocator, tc: TestCase) !TestResult {
+fn runTest(allocator: Allocator, io: std.Io, tc: TestCase) !TestResult {
     return switch (tc.kind) {
-        .check => |example| try runRocCheck(allocator, example),
-        .run => |example| try runRocRun(allocator, example, null),
-        .run_with_stdin => |cfg| try runRocRun(allocator, cfg.example, cfg.stdin),
-        .roc_test => |example| try runRocTest(allocator, example),
-        .build_run => |example| try runBuildAndRun(allocator, example, null, null),
-        .build_run_exit => |cfg| try runBuildAndRun(allocator, cfg.example, null, cfg.expected_exit),
-        .build_run_stdin => |cfg| try runBuildAndRun(allocator, cfg.example, cfg.stdin, null),
-        .dbg_test_run => |example| try runDbgTestRun(allocator, example),
-        .dbg_test_build => |example| try runDbgTestBuild(allocator, example),
+        .check => |example| try runRocCheck(allocator, io, example),
+        .run => |example| try runRocRun(allocator, io, example, null),
+        .run_with_stdin => |cfg| try runRocRun(allocator, io, cfg.example, cfg.stdin),
+        .roc_test => |example| try runRocTest(allocator, io, example),
+        .build_run => |example| try runBuildAndRun(allocator, io, example, null, null),
+        .build_run_exit => |cfg| try runBuildAndRun(allocator, io, cfg.example, null, cfg.expected_exit),
+        .build_run_stdin => |cfg| try runBuildAndRun(allocator, io, cfg.example, cfg.stdin, null),
+        .dbg_test_run => |example| try runDbgTestRun(allocator, io, example),
+        .dbg_test_build => |example| try runDbgTestBuild(allocator, io, example),
     };
 }
 
-fn runRocCheck(allocator: Allocator, example: []const u8) !TestResult {
-    const result = try runCommand(allocator, &.{ "roc", "check", example, "--no-cache" }, null);
+fn runRocCheck(allocator: Allocator, io: std.Io, example: []const u8) !TestResult {
+    const result = try runCommand(allocator, io, &.{ "roc", "check", example, "--no-cache" }, null);
     defer allocator.free(result.stderr);
     defer allocator.free(result.stdout);
 
@@ -308,8 +308,8 @@ fn runRocCheck(allocator: Allocator, example: []const u8) !TestResult {
     return .{ .success = false, .message = "roc check failed" };
 }
 
-fn runRocRun(allocator: Allocator, example: []const u8, stdin: ?[]const u8) !TestResult {
-    const result = try runCommand(allocator, &.{ "roc", example, "--no-cache" }, stdin);
+fn runRocRun(allocator: Allocator, io: std.Io, example: []const u8, stdin: ?[]const u8) !TestResult {
+    const result = try runCommand(allocator, io, &.{ "roc", example, "--no-cache" }, stdin);
     defer allocator.free(result.stderr);
     defer allocator.free(result.stdout);
 
@@ -319,8 +319,8 @@ fn runRocRun(allocator: Allocator, example: []const u8, stdin: ?[]const u8) !Tes
     return .{ .success = false, .message = "roc run failed" };
 }
 
-fn runRocTest(allocator: Allocator, example: []const u8) !TestResult {
-    const result = try runCommand(allocator, &.{ "roc", "test", example }, null);
+fn runRocTest(allocator: Allocator, io: std.Io, example: []const u8) !TestResult {
+    const result = try runCommand(allocator, io, &.{ "roc", "test", example }, null);
     defer allocator.free(result.stderr);
     defer allocator.free(result.stdout);
 
@@ -330,23 +330,20 @@ fn runRocTest(allocator: Allocator, example: []const u8) !TestResult {
     return .{ .success = false, .message = "roc test failed" };
 }
 
-fn runBuildAndRun(allocator: Allocator, example: []const u8, stdin: ?[]const u8, expected_exit: ?u8) !TestResult {
+fn runBuildAndRun(allocator: Allocator, io: std.Io, example: []const u8, stdin: ?[]const u8, expected_exit: ?u8) !TestResult {
     // Use build-output directory
     const exe_name = if (comptime @import("builtin").os.tag == .windows) "test_exe.exe" else "test_exe";
     const full_exe_path = try std.fs.path.join(allocator, &.{ "build-output", exe_name });
     defer allocator.free(full_exe_path);
 
     // Ensure build-output directory exists
-    std.fs.cwd().makeDir("build-output") catch |err| switch (err) {
-        error.PathAlreadyExists => {},
-        else => return err,
-    };
+    try std.Io.Dir.cwd().createDirPath(io, "build-output");
 
     // Build (use --output=path format)
     const output_arg = try std.fmt.allocPrint(allocator, "--output={s}", .{full_exe_path});
     defer allocator.free(output_arg);
 
-    const build_result = try runCommand(allocator, &.{ "roc", "build", example, output_arg }, null);
+    const build_result = try runCommand(allocator, io, &.{ "roc", "build", example, output_arg }, null);
     defer allocator.free(build_result.stderr);
     defer allocator.free(build_result.stdout);
 
@@ -355,7 +352,7 @@ fn runBuildAndRun(allocator: Allocator, example: []const u8, stdin: ?[]const u8,
     }
 
     // Run
-    const run_result = try runCommand(allocator, &.{full_exe_path}, stdin);
+    const run_result = try runCommand(allocator, io, &.{full_exe_path}, stdin);
     defer allocator.free(run_result.stderr);
     defer allocator.free(run_result.stdout);
 
@@ -372,8 +369,8 @@ fn runBuildAndRun(allocator: Allocator, example: []const u8, stdin: ?[]const u8,
     }
 }
 
-fn runDbgTestRun(allocator: Allocator, example: []const u8) !TestResult {
-    const result = try runCommand(allocator, &.{ "roc", example, "--no-cache" }, null);
+fn runDbgTestRun(allocator: Allocator, io: std.Io, example: []const u8) !TestResult {
+    const result = try runCommand(allocator, io, &.{ "roc", example, "--no-cache" }, null);
     defer allocator.free(result.stderr);
     defer allocator.free(result.stdout);
 
@@ -384,23 +381,20 @@ fn runDbgTestRun(allocator: Allocator, example: []const u8) !TestResult {
     return .{ .success = false, .message = "expected '[ROC DBG]' in stderr" };
 }
 
-fn runDbgTestBuild(allocator: Allocator, example: []const u8) !TestResult {
+fn runDbgTestBuild(allocator: Allocator, io: std.Io, example: []const u8) !TestResult {
     // Use build-output directory
     const exe_name = if (comptime @import("builtin").os.tag == .windows) "dbg_test_exe.exe" else "dbg_test_exe";
     const full_exe_path = try std.fs.path.join(allocator, &.{ "build-output", exe_name });
     defer allocator.free(full_exe_path);
 
     // Ensure build-output directory exists
-    std.fs.cwd().makeDir("build-output") catch |err| switch (err) {
-        error.PathAlreadyExists => {},
-        else => return err,
-    };
+    try std.Io.Dir.cwd().createDirPath(io, "build-output");
 
     // Build (use --output=path format)
     const output_arg = try std.fmt.allocPrint(allocator, "--output={s}", .{full_exe_path});
     defer allocator.free(output_arg);
 
-    const build_result = try runCommand(allocator, &.{ "roc", "build", example, output_arg }, null);
+    const build_result = try runCommand(allocator, io, &.{ "roc", "build", example, output_arg }, null);
     defer allocator.free(build_result.stderr);
     defer allocator.free(build_result.stdout);
 
@@ -409,7 +403,7 @@ fn runDbgTestBuild(allocator: Allocator, example: []const u8) !TestResult {
     }
 
     // Run
-    const run_result = try runCommand(allocator, &.{full_exe_path}, null);
+    const run_result = try runCommand(allocator, io, &.{full_exe_path}, null);
     defer allocator.free(run_result.stderr);
     defer allocator.free(run_result.stdout);
 
@@ -426,38 +420,36 @@ const CommandResult = struct {
     stderr: []u8,
 };
 
-fn runCommand(allocator: Allocator, argv: []const []const u8, stdin_data: ?[]const u8) !CommandResult {
-    var child = std.process.Child.init(argv, allocator);
-    child.stdin_behavior = if (stdin_data != null) .Pipe else .Ignore;
-    child.stdout_behavior = .Pipe;
-    child.stderr_behavior = .Pipe;
-
-    try child.spawn();
+fn runCommand(allocator: Allocator, io: std.Io, argv: []const []const u8, stdin_data: ?[]const u8) !CommandResult {
+    var child = try std.process.spawn(io, .{
+        .argv = argv,
+        .stdin = if (stdin_data != null) .pipe else .ignore,
+        .stdout = .pipe,
+        .stderr = .pipe,
+    });
 
     // Write stdin if provided
     if (stdin_data) |data| {
         if (child.stdin) |*stdin| {
-            stdin.writeAll(data) catch {};
-            stdin.close();
+            stdin.writeStreamingAll(io, data) catch {};
+            stdin.close(io);
             child.stdin = null;
         }
     }
 
     // Read stdout using readToEndAlloc
-    const stdout_data = if (child.stdout) |*pipe|
-        pipe.readToEndAlloc(allocator, 10 * 1024 * 1024) catch &.{}
-    else
-        &.{};
+    var stdout_buffer: [4096]u8 = undefined;
+    var stdout_reader = child.stdout.?.readerStreaming(io, &stdout_buffer);
+    const stdout_data = stdout_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024)) catch &.{};
 
     // Read stderr using readToEndAlloc
-    const stderr_data = if (child.stderr) |*pipe|
-        pipe.readToEndAlloc(allocator, 10 * 1024 * 1024) catch &.{}
-    else
-        &.{};
+    var stderr_buffer: [4096]u8 = undefined;
+    var stderr_reader = child.stderr.?.readerStreaming(io, &stderr_buffer);
+    const stderr_data = stderr_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024)) catch &.{};
 
-    const term = try child.wait();
+    const term = try child.wait(io);
     const exit_code: u8 = switch (term) {
-        .Exited => |code| code,
+        .exited => |code| code,
         else => 255,
     };
 

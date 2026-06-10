@@ -4,7 +4,7 @@ A template for building [Roc platforms](https://www.roc-lang.org/platforms) usin
 
 ## Requirements
 
-- [Zig](https://ziglang.org/download/) 0.15.2 or later
+- [Zig](https://ziglang.org/download/) 0.16.0 or later
 - [Roc](https://www.roc-lang.org/) (for bundling)
 
 ## Examples

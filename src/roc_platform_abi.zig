@@ -446,7 +446,7 @@ pub const RocIo = struct {
     }
 
     fn nativeWriteStderr(_: ?*anyopaque, data: []const u8) void {
-        std.fs.File.stderr().writeAll(data) catch {};
+        std.Io.File.stderr().writeStreamingAll(std.Io.Threaded.global_single_threaded.io(), data) catch {};
     }
 
     fn nativeOnFatal(_: ?*anyopaque) noreturn {
@@ -689,4 +689,3 @@ pub fn makeRocOps(env: *RocEnv, hosted_fns: HostedFunctions) RocOps {
 
 /// Entrypoint: main_for_host!
 pub extern fn roc__main_for_host(ops: *RocOps, ret_ptr: *i32, arg_ptr: ?*const RocList(RocStr)) callconv(.c) void;
-

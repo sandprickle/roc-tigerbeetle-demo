@@ -6,8 +6,8 @@ const abi = @import("roc_platform_abi.zig");
 /// to a standard `RocEnv` while hosted functions can recover the full
 /// `HostEnv` via `@fieldParentPtr`.
 const HostEnv = struct {
-    gpa: std.heap.GeneralPurposeAllocator(.{}),
-    stdin_reader: std.fs.File.Reader,
+    gpa: std.heap.DebugAllocator(.{}),
+    stdin_reader: std.Io.File.Reader,
     roc_env: abi.RocEnv,
 };
 
@@ -38,9 +38,10 @@ fn hostedStderrLine(ops: *abi.RocOps, ret_ptr: *anyopaque, args_ptr: *const abi.
     _ = ret_ptr; // Return value is {} which is zero-sized
 
     const message = args_ptr.arg0.asSlice();
-    const stderr: std.fs.File = .stderr();
-    stderr.writeAll(message) catch {};
-    stderr.writeAll("\n") catch {};
+    const io = std.Io.Threaded.global_single_threaded.io();
+    const stderr = std.Io.File.stderr();
+    stderr.writeStreamingAll(io, message) catch {};
+    stderr.writeStreamingAll(io, "\n") catch {};
 
     args_ptr.arg0.decref(ops);
 }
@@ -86,20 +87,22 @@ fn hostedStdoutLine(ops: *abi.RocOps, ret_ptr: *anyopaque, args_ptr: *const abi.
     _ = ret_ptr; // Return value is {} which is zero-sized
 
     const message = args_ptr.arg0.asSlice();
-    const stdout: std.fs.File = .stdout();
-    stdout.writeAll(message) catch {};
-    stdout.writeAll("\n") catch {};
+    const io = std.Io.Threaded.global_single_threaded.io();
+    const stdout = std.Io.File.stdout();
+    stdout.writeStreamingAll(io, message) catch {};
+    stdout.writeStreamingAll(io, "\n") catch {};
 
     args_ptr.arg0.decref(ops);
 }
 
 /// Platform host entrypoint
 fn platform_main(argc: usize, argv: [*][*:0]u8) c_int {
+    const io = std.Io.Threaded.global_single_threaded.io();
     var stdin_buffer: [4096]u8 = undefined;
 
     var host_env = HostEnv{
-        .gpa = std.heap.GeneralPurposeAllocator(.{}){},
-        .stdin_reader = std.fs.File.stdin().reader(&stdin_buffer),
+        .gpa = std.heap.DebugAllocator(.{}){},
+        .stdin_reader = std.Io.File.stdin().readerStreaming(io, &stdin_buffer),
         .roc_env = undefined,
     };
     host_env.roc_env = .{

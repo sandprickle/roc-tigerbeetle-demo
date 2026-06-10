@@ -191,7 +191,7 @@ const CleanupStep = struct {
         _ = options;
         const self: *CleanupStep = @fieldParentPtr("step", step);
         const path = self.path.getPath2(step.owner, null);
-        std.fs.cwd().deleteFile(path) catch |err| switch (err) {
+        std.Io.Dir.cwd().deleteFile(step.owner.graph.io, path) catch |err| switch (err) {
             error.FileNotFound => {}, // Already gone, that's fine
             else => return err,
         };
