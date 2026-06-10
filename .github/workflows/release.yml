@@ -100,7 +100,7 @@ jobs:
           - ubuntu-24.04-arm
           - windows-2022
           - windows-2025
-          - windows-11-arm
+          # TODO: re-enable windows-11-arm after https://codeberg.org/ziglang/zig/issues/31865 is fixed.
     runs-on: ${{ matrix.os }}
     defaults:
       run:
