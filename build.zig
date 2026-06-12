@@ -16,10 +16,10 @@ const RocTarget = enum {
     fn toZigTarget(self: RocTarget) std.Target.Query {
         return switch (self) {
             .x64mac => .{ .cpu_arch = .x86_64, .os_tag = .macos },
-            .x64win => .{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .gnu },
+            .x64win => .{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .msvc },
             .x64musl => .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .musl },
             .arm64mac => .{ .cpu_arch = .aarch64, .os_tag = .macos },
-            .arm64win => .{ .cpu_arch = .aarch64, .os_tag = .windows, .abi = .gnu },
+            .arm64win => .{ .cpu_arch = .aarch64, .os_tag = .windows, .abi = .msvc },
             .arm64musl => .{ .cpu_arch = .aarch64, .os_tag = .linux, .abi = .musl },
         };
     }
@@ -98,7 +98,7 @@ pub fn build(b: *std.Build) void {
         return;
     };
 
-    const native_lib = buildHostLib(b, native_target, optimize);
+    const native_lib = buildHostLib(b, b.resolveTargetQuery(native_roc_target.toZigTarget()), optimize);
     b.installArtifact(native_lib);
 
     const copy_native = b.addUpdateSourceFiles();

@@ -3,6 +3,10 @@ const std = @import("std");
 const builtin = @import("builtin");
 const abi = @import("roc_platform_abi.zig");
 
+pub const std_options: std.Options = .{
+    .allow_stack_tracing = false,
+};
+
 /// Host environment. Embeds `abi.RocEnv` so the Roc runtime sees a pointer
 /// to a standard `RocEnv` while hosted functions can recover the full
 /// `HostEnv` via `@fieldParentPtr`.
