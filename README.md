@@ -17,7 +17,7 @@ Build standalone executable: `roc build examples/<name>.roc`
 
 ```
 $ zig build test
-roc Roc compiler version debug-c30871c6
+roc Roc compiler version debug-05d70690
 
   check: 12/12 passed
   run (interpreter): 10/10 passed

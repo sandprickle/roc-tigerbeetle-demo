@@ -45,7 +45,7 @@ fi
 # Ensure roc is in PATH for local runs
 export PATH="$(pwd)/roc-src/zig-out/bin:$PATH"
 
-# Skip zig build if SKIP_ZIG_BUILD is set (used in release testing)
+# Skip zig build if SKIP_ZIG_BUILD is set (useful when a caller only needs Roc bootstrapping)
 if [ -z "${SKIP_ZIG_BUILD:-}" ]; then
   echo ""
   echo "Building platform..."
@@ -57,5 +57,16 @@ if [ -z "${SKIP_ZIG_BUILD:-}" ]; then
 
   echo ""
   echo "Running bundle..."
-  ./bundle.sh
+  BUNDLE_OUTPUT=$(./bundle.sh 2>&1)
+  echo "$BUNDLE_OUTPUT"
+  BUNDLE_PATH=$(echo "$BUNDLE_OUTPUT" | awk '/^Created:/ { print $2; exit }')
+
+  if [ -z "$BUNDLE_PATH" ]; then
+    echo "Error: Could not extract bundle path from output"
+    exit 1
+  fi
+
+  echo ""
+  echo "Running tests with bundled platform..."
+  ci/test_bundled_examples.sh "$BUNDLE_PATH"
 fi

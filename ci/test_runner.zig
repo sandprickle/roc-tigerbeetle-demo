@@ -3,6 +3,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 var verbose: bool = false;
+var examples_dir: []const u8 = "examples";
 
 pub fn main(init: std.process.Init) !void {
     var gpa = std.heap.DebugAllocator(.{}){};
@@ -20,9 +21,21 @@ pub fn main(init: std.process.Init) !void {
     // Parse args
     const args = try init.minimal.args.toSlice(init.arena.allocator());
 
-    for (args[1..]) |arg| {
+    var i: usize = 1;
+    while (i < args.len) : (i += 1) {
+        const arg = args[i];
         if (std.mem.eql(u8, arg, "--verbose") or std.mem.eql(u8, arg, "-v")) {
             verbose = true;
+        } else if (std.mem.eql(u8, arg, "--examples-dir")) {
+            i += 1;
+            if (i >= args.len) {
+                try stderr.interface.print("Missing value for --examples-dir\n", .{});
+                try stderr.interface.flush();
+                std.process.exit(1);
+            }
+            examples_dir = args[i];
+        } else if (std.mem.startsWith(u8, arg, "--examples-dir=")) {
+            examples_dir = arg["--examples-dir=".len..];
         }
     }
 
@@ -298,7 +311,10 @@ fn runTest(allocator: Allocator, io: std.Io, tc: TestCase) !TestResult {
 }
 
 fn runRocCheck(allocator: Allocator, io: std.Io, example: []const u8) !TestResult {
-    const result = try runCommand(allocator, io, &.{ "roc", "check", example, "--no-cache" }, null);
+    const path = try examplePath(allocator, example);
+    defer allocator.free(path);
+
+    const result = try runCommand(allocator, io, &.{ "roc", "check", path, "--no-cache" }, null);
     defer allocator.free(result.stderr);
     defer allocator.free(result.stdout);
 
@@ -309,7 +325,10 @@ fn runRocCheck(allocator: Allocator, io: std.Io, example: []const u8) !TestResul
 }
 
 fn runRocRun(allocator: Allocator, io: std.Io, example: []const u8, stdin: ?[]const u8) !TestResult {
-    const result = try runCommand(allocator, io, &.{ "roc", example, "--no-cache" }, stdin);
+    const path = try examplePath(allocator, example);
+    defer allocator.free(path);
+
+    const result = try runCommand(allocator, io, &.{ "roc", path, "--no-cache" }, stdin);
     defer allocator.free(result.stderr);
     defer allocator.free(result.stdout);
 
@@ -320,7 +339,10 @@ fn runRocRun(allocator: Allocator, io: std.Io, example: []const u8, stdin: ?[]co
 }
 
 fn runRocTest(allocator: Allocator, io: std.Io, example: []const u8) !TestResult {
-    const result = try runCommand(allocator, io, &.{ "roc", "test", example }, null);
+    const path = try examplePath(allocator, example);
+    defer allocator.free(path);
+
+    const result = try runCommand(allocator, io, &.{ "roc", "test", path }, null);
     defer allocator.free(result.stderr);
     defer allocator.free(result.stdout);
 
@@ -331,6 +353,9 @@ fn runRocTest(allocator: Allocator, io: std.Io, example: []const u8) !TestResult
 }
 
 fn runBuildAndRun(allocator: Allocator, io: std.Io, example: []const u8, stdin: ?[]const u8, expected_exit: ?u8) !TestResult {
+    const path = try examplePath(allocator, example);
+    defer allocator.free(path);
+
     // Use build-output directory
     const exe_name = if (comptime @import("builtin").os.tag == .windows) "test_exe.exe" else "test_exe";
     const full_exe_path = try std.fs.path.join(allocator, &.{ "build-output", exe_name });
@@ -343,7 +368,7 @@ fn runBuildAndRun(allocator: Allocator, io: std.Io, example: []const u8, stdin: 
     const output_arg = try std.fmt.allocPrint(allocator, "--output={s}", .{full_exe_path});
     defer allocator.free(output_arg);
 
-    const build_result = try runCommand(allocator, io, &.{ "roc", "build", example, output_arg }, null);
+    const build_result = try runCommand(allocator, io, &.{ "roc", "build", path, output_arg }, null);
     defer allocator.free(build_result.stderr);
     defer allocator.free(build_result.stdout);
 
@@ -370,7 +395,10 @@ fn runBuildAndRun(allocator: Allocator, io: std.Io, example: []const u8, stdin: 
 }
 
 fn runDbgTestRun(allocator: Allocator, io: std.Io, example: []const u8) !TestResult {
-    const result = try runCommand(allocator, io, &.{ "roc", example, "--no-cache" }, null);
+    const path = try examplePath(allocator, example);
+    defer allocator.free(path);
+
+    const result = try runCommand(allocator, io, &.{ "roc", path, "--no-cache" }, null);
     defer allocator.free(result.stderr);
     defer allocator.free(result.stdout);
 
@@ -382,6 +410,9 @@ fn runDbgTestRun(allocator: Allocator, io: std.Io, example: []const u8) !TestRes
 }
 
 fn runDbgTestBuild(allocator: Allocator, io: std.Io, example: []const u8) !TestResult {
+    const path = try examplePath(allocator, example);
+    defer allocator.free(path);
+
     // Use build-output directory
     const exe_name = if (comptime @import("builtin").os.tag == .windows) "dbg_test_exe.exe" else "dbg_test_exe";
     const full_exe_path = try std.fs.path.join(allocator, &.{ "build-output", exe_name });
@@ -394,7 +425,7 @@ fn runDbgTestBuild(allocator: Allocator, io: std.Io, example: []const u8) !TestR
     const output_arg = try std.fmt.allocPrint(allocator, "--output={s}", .{full_exe_path});
     defer allocator.free(output_arg);
 
-    const build_result = try runCommand(allocator, io, &.{ "roc", "build", example, output_arg }, null);
+    const build_result = try runCommand(allocator, io, &.{ "roc", "build", path, output_arg }, null);
     defer allocator.free(build_result.stderr);
     defer allocator.free(build_result.stdout);
 
@@ -412,6 +443,15 @@ fn runDbgTestBuild(allocator: Allocator, io: std.Io, example: []const u8) !TestR
         return .{ .success = true };
     }
     return .{ .success = false, .message = "expected '[ROC DBG]' in stderr" };
+}
+
+fn examplePath(allocator: Allocator, example: []const u8) ![]const u8 {
+    const prefix = "examples/";
+    if (std.mem.eql(u8, examples_dir, "examples") or !std.mem.startsWith(u8, example, prefix)) {
+        return allocator.dupe(u8, example);
+    }
+
+    return std.fs.path.join(allocator, &.{ examples_dir, example[prefix.len..] });
 }
 
 const CommandResult = struct {
