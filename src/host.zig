@@ -1,19 +1,30 @@
 ///! Platform host that implements effectful functions for stdout, stderr, and stdin.
 const std = @import("std");
+const builtin = @import("builtin");
 const abi = @import("roc_platform_abi.zig");
+
+pub const std_options: std.Options = .{
+    .allow_stack_tracing = false,
+};
 
 /// Host environment. Embeds `abi.RocEnv` so the Roc runtime sees a pointer
 /// to a standard `RocEnv` while hosted functions can recover the full
 /// `HostEnv` via `@fieldParentPtr`.
 const HostEnv = struct {
-    gpa: std.heap.GeneralPurposeAllocator(.{}),
-    stdin_reader: std.fs.File.Reader,
+    gpa: std.heap.DebugAllocator(.{}),
+    stdin_reader: std.Io.File.Reader,
     roc_env: abi.RocEnv,
 };
 
+/// Roc entrypoint exported by the app under `provides { "roc_main": main_for_host! }`.
+extern fn roc_main(args: abi.RocList(abi.RocStr)) callconv(.c) i32;
+
+/// Private RocOps used by host helpers and exported runtime symbols.
+var g_roc_ops: ?*abi.RocOps = null;
+
 // OS-specific entry point handling (not exported during tests)
 comptime {
-    if (!@import("builtin").is_test) {
+    if (!builtin.is_test) {
         // Export main for all platforms
         @export(&main, .{ .name = "main" });
 
@@ -33,22 +44,22 @@ fn main(argc: c_int, argv: [*][*:0]u8) callconv(.c) c_int {
     return platform_main(@intCast(argc), argv);
 }
 
-/// Hosted function: Stderr.line! (index 0 - sorted alphabetically)
-fn hostedStderrLine(ops: *abi.RocOps, ret_ptr: *anyopaque, args_ptr: *const abi.StderrLineArgs) callconv(.c) void {
-    _ = ret_ptr; // Return value is {} which is zero-sized
+/// Hosted function: Stderr.line!
+fn hostedStderrLine(str: abi.RocStr) callconv(.c) void {
+    const ops = g_roc_ops.?;
+    var owned = str;
+    defer owned.decref(ops);
 
-    const message = args_ptr.arg0.asSlice();
-    const stderr: std.fs.File = .stderr();
-    stderr.writeAll(message) catch {};
-    stderr.writeAll("\n") catch {};
-
-    args_ptr.arg0.decref(ops);
+    const message = owned.asSlice();
+    const io = std.Io.Threaded.global_single_threaded.io();
+    const stderr = std.Io.File.stderr();
+    stderr.writeStreamingAll(io, message) catch {};
+    stderr.writeStreamingAll(io, "\n") catch {};
 }
 
-/// Hosted function: Stdin.line! (index 1 - sorted alphabetically)
-fn hostedStdinLine(ops: *abi.RocOps, ret_ptr: *abi.RocStr, args_ptr: *anyopaque) callconv(.c) void {
-    _ = args_ptr; // Argument is {} which is zero-sized
-
+/// Hosted function: Stdin.line!
+fn hostedStdinLine() callconv(.c) abi.RocStr {
+    const ops = g_roc_ops.?;
     const roc_env: *abi.RocEnv = @ptrCast(@alignCast(ops.env));
     const host: *HostEnv = @fieldParentPtr("roc_env", roc_env);
     var reader = &host.stdin_reader.interface;
@@ -74,32 +85,72 @@ fn hostedStdinLine(ops: *abi.RocOps, ret_ptr: *abi.RocStr, args_ptr: *anyopaque)
     }
 
     if (line.len == 0) {
-        ret_ptr.* = abi.RocStr.empty();
-        return;
+        return abi.RocStr.empty();
     }
 
-    ret_ptr.* = abi.RocStr.fromSlice(line[0..line.len], ops);
+    return abi.RocStr.fromSlice(line[0..line.len], ops);
 }
 
-/// Hosted function: Stdout.line! (index 2 - sorted alphabetically)
-fn hostedStdoutLine(ops: *abi.RocOps, ret_ptr: *anyopaque, args_ptr: *const abi.StdoutLineArgs) callconv(.c) void {
-    _ = ret_ptr; // Return value is {} which is zero-sized
+/// Hosted function: Stdout.line!
+fn hostedStdoutLine(str: abi.RocStr) callconv(.c) void {
+    const ops = g_roc_ops.?;
+    var owned = str;
+    defer owned.decref(ops);
 
-    const message = args_ptr.arg0.asSlice();
-    const stdout: std.fs.File = .stdout();
-    stdout.writeAll(message) catch {};
-    stdout.writeAll("\n") catch {};
+    const message = owned.asSlice();
+    const io = std.Io.Threaded.global_single_threaded.io();
+    const stdout = std.Io.File.stdout();
+    stdout.writeStreamingAll(io, message) catch {};
+    stdout.writeStreamingAll(io, "\n") catch {};
+}
 
-    args_ptr.arg0.decref(ops);
+fn hostAlloc(length: usize, alignment: usize) callconv(.c) ?*anyopaque {
+    return abi.DefaultAllocators.rocAlloc(g_roc_ops.?, length, alignment);
+}
+
+fn hostDealloc(ptr: *anyopaque, alignment: usize) callconv(.c) void {
+    abi.DefaultAllocators.rocDealloc(g_roc_ops.?, ptr, alignment);
+}
+
+fn hostRealloc(ptr: *anyopaque, new_length: usize, alignment: usize) callconv(.c) ?*anyopaque {
+    return abi.DefaultAllocators.rocRealloc(g_roc_ops.?, ptr, new_length, alignment);
+}
+
+fn hostDbg(bytes: [*]const u8, len: usize) callconv(.c) void {
+    abi.DefaultHandlers.rocDbg(g_roc_ops.?, bytes, len);
+}
+
+fn hostExpectFailed(bytes: [*]const u8, len: usize) callconv(.c) void {
+    abi.DefaultHandlers.rocExpectFailed(g_roc_ops.?, bytes, len);
+}
+
+fn hostCrashed(bytes: [*]const u8, len: usize) callconv(.c) void {
+    abi.DefaultHandlers.rocCrashed(g_roc_ops.?, bytes, len);
+}
+
+comptime {
+    if (!builtin.is_test) {
+        @export(&hostedStderrLine, .{ .name = "roc_stderr_line", .visibility = .hidden });
+        @export(&hostedStdinLine, .{ .name = "roc_stdin_line", .visibility = .hidden });
+        @export(&hostedStdoutLine, .{ .name = "roc_stdout_line", .visibility = .hidden });
+
+        @export(&hostAlloc, .{ .name = "roc_alloc", .visibility = .hidden });
+        @export(&hostDealloc, .{ .name = "roc_dealloc", .visibility = .hidden });
+        @export(&hostRealloc, .{ .name = "roc_realloc", .visibility = .hidden });
+        @export(&hostDbg, .{ .name = "roc_dbg", .visibility = .hidden });
+        @export(&hostExpectFailed, .{ .name = "roc_expect_failed", .visibility = .hidden });
+        @export(&hostCrashed, .{ .name = "roc_crashed", .visibility = .hidden });
+    }
 }
 
 /// Platform host entrypoint
 fn platform_main(argc: usize, argv: [*][*:0]u8) c_int {
+    const io = std.Io.Threaded.global_single_threaded.io();
     var stdin_buffer: [4096]u8 = undefined;
 
     var host_env = HostEnv{
-        .gpa = std.heap.GeneralPurposeAllocator(.{}){},
-        .stdin_reader = std.fs.File.stdin().reader(&stdin_buffer),
+        .gpa = std.heap.DebugAllocator(.{}){},
+        .stdin_reader = std.Io.File.stdin().readerStreaming(io, &stdin_buffer),
         .roc_env = undefined,
     };
     host_env.roc_env = .{
@@ -107,22 +158,18 @@ fn platform_main(argc: usize, argv: [*][*:0]u8) c_int {
         .roc_io = abi.RocIo.default(),
     };
 
-    var roc_ops = abi.makeRocOps(&host_env.roc_env, abi.hostedFunctions(.{
-        .stderr_line = &hostedStderrLine,
-        .stdin_line = &hostedStdinLine,
-        .stdout_line = &hostedStdoutLine,
-    }));
+    var roc_ops = abi.makeRocOps(&host_env.roc_env, .{ .count = 0, .fns = undefined });
+    g_roc_ops = &roc_ops;
+
     // Build List(Str) from argc/argv
     std.log.debug("[HOST] Building args...", .{});
     const args_list = buildStrArgsList(argc, argv, &roc_ops);
     std.log.debug("[HOST] args_list ptr=0x{x} len={d}", .{ @intFromPtr(args_list.elements_ptr), args_list.length });
 
     // Call the app's main! entrypoint - returns I32 exit code
-    std.log.debug("[HOST] Calling roc__main_for_host...", .{});
+    std.log.debug("[HOST] Calling roc_main...", .{});
 
-    var exit_code: i32 = -99;
-    abi.roc__main_for_host(&roc_ops, &exit_code, &args_list);
-
+    const exit_code = roc_main(args_list);
     std.log.debug("[HOST] Returned from roc, exit_code={d}", .{exit_code});
 
     // Check for memory leaks before returning

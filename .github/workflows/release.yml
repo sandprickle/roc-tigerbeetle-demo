@@ -29,9 +29,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Zig
-        uses: mlugg/setup-zig@8d6198c65fb0feaa111df26e6b467fea8345e46f # v2.0.5
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
-          version: 0.15.2
+          version: 0.16.0
           use-cache: false
 
       - name: Clone Roc source
@@ -100,7 +100,7 @@ jobs:
           - ubuntu-24.04-arm
           - windows-2022
           - windows-2025
-          - windows-11-arm
+          # TODO: re-enable windows-11-arm after https://codeberg.org/ziglang/zig/issues/31865 is fixed.
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -111,9 +111,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Zig
-        uses: mlugg/setup-zig@8d6198c65fb0feaa111df26e6b467fea8345e46f # v2.0.5
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
-          version: 0.15.2
+          version: 0.16.0
           use-cache: false
 
       - name: Clone Roc source
@@ -143,44 +143,8 @@ jobs:
         with:
           name: platform-bundle
 
-      - name: Start HTTP server for bundle
-        run: |
-          # Start Python HTTP server in background on port 8000
-          python3 -m http.server 8000 &
-          HTTP_SERVER_PID=$!
-          echo "HTTP_SERVER_PID=$HTTP_SERVER_PID" >> "$GITHUB_ENV"
-
-          # Wait for server to start
-          sleep 5
-
-          # Verify server is running and bundle is accessible
-          if ! curl -f -I "http://localhost:8000/${{ needs.build-and-bundle.outputs.bundle_filename }}" > /dev/null 2>&1; then
-            echo "Error: HTTP server not accessible or bundle not found"
-            kill $HTTP_SERVER_PID || true
-            exit 1
-          fi
-
-          echo "HTTP server started on port 8000 (PID: $HTTP_SERVER_PID)"
-          echo "Bundle accessible at: http://localhost:8000/${{ needs.build-and-bundle.outputs.bundle_filename }}"
-
-      - name: Modify examples to use bundled platform
-        run: |
-          # Replace local platform path with HTTP URL in all examples
-          for example in examples/*.roc; do
-            sed -i.bak "s|platform \"../platform/main.roc\"|platform \"http://localhost:8000/${{ needs.build-and-bundle.outputs.bundle_filename }}\"|g" "$example"
-          done
-
-          # Show diff for verification
-          echo "Modified examples:"
-          git diff examples/ | head -50
-
       - name: Run tests with bundled platform
-        run: |
-          # Set environment variable to skip zig build step
-          export SKIP_ZIG_BUILD=1
-
-          # Run all tests against the bundled platform
-          bash ci/all_tests.sh
+        run: ci/test_bundled_examples.sh "${{ needs.build-and-bundle.outputs.bundle_filename }}"
 
   create-release:
     name: Create GitHub Release
@@ -218,7 +182,7 @@ jobs:
             "$BUNDLE_FILE" \
             --title "${{ github.event.inputs.release_tag }}" \
             --generate-notes \
-            --notes "Platform bundle built with Zig 0.15.2 and Roc $ROC_COMMIT"
+            --notes "Platform bundle built with Zig 0.16.0 and Roc $ROC_COMMIT"
 
           echo "Release created: ${{ github.event.inputs.release_tag }}"
           echo "Bundle uploaded: $BUNDLE_FILE"

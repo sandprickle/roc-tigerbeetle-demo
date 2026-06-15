@@ -4,7 +4,7 @@ A template for building [Roc platforms](https://www.roc-lang.org/platforms) usin
 
 ## Requirements
 
-- [Zig](https://ziglang.org/download/) 0.15.2 or later
+- [Zig](https://ziglang.org/download/) 0.16.0 or later
 - [Roc](https://www.roc-lang.org/) (for bundling)
 
 ## Examples
@@ -17,7 +17,7 @@ Build standalone executable: `roc build examples/<name>.roc`
 
 ```
 $ zig build test
-roc Roc compiler version debug-c30871c6
+roc Roc compiler version debug-05d70690
 
   check: 12/12 passed
   run (interpreter): 10/10 passed
