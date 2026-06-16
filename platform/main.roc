@@ -1,12 +1,13 @@
 platform ""
     requires {} { main! : List(Str) => Try({}, [Exit(I32)]) }
-    exposes [Stdout, Stderr, Stdin]
+    exposes [Stdout, Stderr, Stdin, Utc]
     packages {}
     provides { "roc_main": main_for_host! }
     hosted {
         "roc_stderr_line": Stderr.line!,
         "roc_stdin_line": Stdin.line!,
         "roc_stdout_line": Stdout.line!,
+        "roc_host_posix_time": Host.posix_time!,
     }
     targets: {
         inputs: "targets/",
@@ -21,6 +22,8 @@ platform ""
 import Stdout
 import Stderr
 import Stdin
+import Utc
+import Host
 
 main_for_host! : List(Str) => I32
 main_for_host! = |args| {
