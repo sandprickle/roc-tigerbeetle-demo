@@ -494,6 +494,74 @@ pub const RocEnv = struct {
     roc_io: RocIo,
 };
 
+/// Element type for __AnonStruct6
+pub const __AnonStruct6 = extern struct {
+    @"timestamp": u64,
+    @"status": CodeMustNotBeZeroOrCreatedOrCreditsPendingMustBeZeroOrCreditsPostedMustBeZeroOrDebitsPendingMustBeZeroOrDebitsPostedMustBeZeroOrExistsOrExistsWithDifferentCodeOrExistsWithDifferentFlagsOrExistsWithDifferentLedgerOrExistsWithDifferentUserData128OrExistsWithDifferentUserData32OrExistsWithDifferentUserData64OrFlagsAreMutuallyExclusiveOrIdMustNotBeIntMaxOrIdMustNotBeZeroOrImportedEventExpectedOrImportedEventNotExpectedOrImportedEventTimestampMustNotAdvanceOrImportedEventTimestampMustNotRegressOrImportedEventTimestampOutOfRangeOrLedgerMustNotBeZeroOrLinkedEventChainOpenOrLinkedEventFailedOrReservedFieldOrReservedFlagOrTimestampMustBeZero,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(__AnonStruct6) != 16) @compileError("__AnonStruct6 size mismatch");
+        if (@alignOf(__AnonStruct6) != 8) @compileError("__AnonStruct6 alignment mismatch");
+    }
+}
+
+/// Element type for TigerBeetle.Account
+pub const TigerBeetleAccount = extern struct {
+    @"credits_pending": u128,
+    @"credits_posted": u128,
+    @"debits_pending": u128,
+    @"debits_posted": u128,
+    @"id": u128,
+    @"user_data_128": u128,
+    @"timestamp": u64,
+    @"user_data_64": u64,
+    @"ledger": u32,
+    @"reserved": i32,
+    @"user_data_32": u32,
+    @"code": u16,
+    @"flags": u16,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(TigerBeetleAccount) != 128) @compileError("TigerBeetleAccount size mismatch");
+        if (@alignOf(TigerBeetleAccount) != 16) @compileError("TigerBeetleAccount alignment mismatch");
+    }
+}
+
+/// Tag union: CodeMustNotBeZeroOrCreatedOrCreditsPendingMustBeZeroOrCreditsPostedMustBeZeroOrDebitsPendingMustBeZeroOrDebitsPostedMustBeZeroOrExistsOrExistsWithDifferentCodeOrExistsWithDifferentFlagsOrExistsWithDifferentLedgerOrExistsWithDifferentUserData128OrExistsWithDifferentUserData32OrExistsWithDifferentUserData64OrFlagsAreMutuallyExclusiveOrIdMustNotBeIntMaxOrIdMustNotBeZeroOrImportedEventExpectedOrImportedEventNotExpectedOrImportedEventTimestampMustNotAdvanceOrImportedEventTimestampMustNotRegressOrImportedEventTimestampOutOfRangeOrLedgerMustNotBeZeroOrLinkedEventChainOpenOrLinkedEventFailedOrReservedFieldOrReservedFlagOrTimestampMustBeZero
+pub const CodeMustNotBeZeroOrCreatedOrCreditsPendingMustBeZeroOrCreditsPostedMustBeZeroOrDebitsPendingMustBeZeroOrDebitsPostedMustBeZeroOrExistsOrExistsWithDifferentCodeOrExistsWithDifferentFlagsOrExistsWithDifferentLedgerOrExistsWithDifferentUserData128OrExistsWithDifferentUserData32OrExistsWithDifferentUserData64OrFlagsAreMutuallyExclusiveOrIdMustNotBeIntMaxOrIdMustNotBeZeroOrImportedEventExpectedOrImportedEventNotExpectedOrImportedEventTimestampMustNotAdvanceOrImportedEventTimestampMustNotRegressOrImportedEventTimestampOutOfRangeOrLedgerMustNotBeZeroOrLinkedEventChainOpenOrLinkedEventFailedOrReservedFieldOrReservedFlagOrTimestampMustBeZero = enum(u8) {
+    code_must_not_be_zero = 0,
+    created = 1,
+    credits_pending_must_be_zero = 2,
+    credits_posted_must_be_zero = 3,
+    debits_pending_must_be_zero = 4,
+    debits_posted_must_be_zero = 5,
+    exists = 6,
+    exists_with_different_code = 7,
+    exists_with_different_flags = 8,
+    exists_with_different_ledger = 9,
+    exists_with_different_user_data128 = 10,
+    exists_with_different_user_data32 = 11,
+    exists_with_different_user_data64 = 12,
+    flags_are_mutually_exclusive = 13,
+    id_must_not_be_int_max = 14,
+    id_must_not_be_zero = 15,
+    imported_event_expected = 16,
+    imported_event_not_expected = 17,
+    imported_event_timestamp_must_not_advance = 18,
+    imported_event_timestamp_must_not_regress = 19,
+    imported_event_timestamp_out_of_range = 20,
+    ledger_must_not_be_zero = 21,
+    linked_event_chain_open = 22,
+    linked_event_failed = 23,
+    reserved_field = 24,
+    reserved_flag = 25,
+    timestamp_must_be_zero = 26,
+};
+
 /// Tag discriminant for Try.
 pub const TryTag = enum(u8) {
     Err = 0,
@@ -530,6 +598,14 @@ pub const StdoutLineArgs = extern struct {
     arg0: RocStr,
 };
 
+/// Arguments for TigerBeetle.create_accounts!
+/// Roc signature: List(TigerBeetle.Account) => List({ status : [CodeMustNotBeZero, Created, CreditsPendingMustBeZero, CreditsPostedMustBeZero, DebitsPendingMustBeZero, DebitsPostedMustBeZero, Exists, ExistsWithDifferentCode, ExistsWithDifferentFlags, ExistsWithDifferentLedger, ExistsWithDifferentUserData128, ExistsWithDifferentUserData32, ExistsWithDifferentUserData64, FlagsAreMutuallyExclusive, IdMustNotBeIntMax, IdMustNotBeZero, ImportedEventExpected, ImportedEventNotExpected, ImportedEventTimestampMustNotAdvance, ImportedEventTimestampMustNotRegress, ImportedEventTimestampOutOfRange, LedgerMustNotBeZero, LinkedEventChainOpen, LinkedEventFailed, ReservedField, ReservedFlag, TimestampMustBeZero], timestamp : U64 })
+/// Refcounted fields are owned by the hosted function.
+pub const TigerBeetleCreate_accountsArgs = extern struct {
+    arg0: RocListWith(TigerBeetleAccount, false),
+};
+
+
 // =============================================================================
 // Runtime Symbols
 //
@@ -554,6 +630,14 @@ pub extern fn roc_crashed(bytes: [*]const u8, len: usize) callconv(.c) void;
 /// Roc signature: {} => I128
 pub extern fn roc_host_posix_time() callconv(.c) i128;
 
+/// Hosted symbol for Host.random_U128!
+/// Roc signature: {} => U128
+pub extern fn roc_host_random_U128() callconv(.c) u128;
+
+/// Hosted symbol for Host.random_U64!
+/// Roc signature: {} => U64
+pub extern fn roc_host_random_U64() callconv(.c) u64;
+
 /// Hosted symbol for Stderr.line!
 /// Roc signature: Str => {}
 pub extern fn roc_stderr_line(arg0: RocStr) callconv(.c) void;
@@ -565,6 +649,11 @@ pub extern fn roc_stdin_line() callconv(.c) RocStr;
 /// Hosted symbol for Stdout.line!
 /// Roc signature: Str => {}
 pub extern fn roc_stdout_line(arg0: RocStr) callconv(.c) void;
+
+/// Hosted symbol for TigerBeetle.create_accounts!
+/// Roc signature: List(TigerBeetle.Account) => List({ status : [CodeMustNotBeZero, Created, CreditsPendingMustBeZero, CreditsPostedMustBeZero, DebitsPendingMustBeZero, DebitsPostedMustBeZero, Exists, ExistsWithDifferentCode, ExistsWithDifferentFlags, ExistsWithDifferentLedger, ExistsWithDifferentUserData128, ExistsWithDifferentUserData32, ExistsWithDifferentUserData64, FlagsAreMutuallyExclusive, IdMustNotBeIntMax, IdMustNotBeZero, ImportedEventExpected, ImportedEventNotExpected, ImportedEventTimestampMustNotAdvance, ImportedEventTimestampMustNotRegress, ImportedEventTimestampOutOfRange, LedgerMustNotBeZero, LinkedEventChainOpen, LinkedEventFailed, ReservedField, ReservedFlag, TimestampMustBeZero], timestamp : U64 })
+pub extern fn roc_tb_create_accounts(arg0: RocListWith(TigerBeetleAccount, false)) callconv(.c) RocListWith(__AnonStruct6, false);
+
 
 /// Default memory management functions for Roc platforms.
 ///
@@ -709,3 +798,4 @@ pub fn makeRocHost(env: *RocEnv) RocHost {
 
 /// Entrypoint: main_for_host!
 pub extern fn roc_main(arg0: RocList(RocStr)) callconv(.c) i32;
+

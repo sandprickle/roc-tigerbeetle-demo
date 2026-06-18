@@ -2,6 +2,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const abi = @import("roc_platform_abi.zig");
+const tb_host = @import("tb_host.zig");
 
 pub const std_options: std.Options = .{
     .allow_stack_tracing = false,
@@ -112,6 +113,22 @@ fn hostedHostPosixTime() callconv(.c) i128 {
     return @intCast(nanos);
 }
 
+fn hostedHostRandomU64() callconv(.c) u64 {
+    const io = std.Io.Threaded.global_single_threaded.io();
+    var buf = [_]u8{0} ** 8;
+    std.Io.random(io, &buf);
+
+    return @bitCast(buf);
+}
+
+fn hostedHostRandomU128() callconv(.c) u128 {
+    const io = std.Io.Threaded.global_single_threaded.io();
+    var buf = [_]u8{0} ** 16;
+    std.Io.random(io, &buf);
+
+    return @bitCast(buf);
+}
+
 fn hostAlloc(length: usize, alignment: usize) callconv(.c) ?*anyopaque {
     return abi.DefaultAllocators.rocAlloc(g_roc_host.?, length, alignment);
 }
@@ -142,6 +159,8 @@ comptime {
         @export(&hostedStdinLine, .{ .name = "roc_stdin_line", .visibility = .hidden });
         @export(&hostedStdoutLine, .{ .name = "roc_stdout_line", .visibility = .hidden });
         @export(&hostedHostPosixTime, .{ .name = "roc_host_posix_time", .visibility = .hidden });
+        @export(&hostedHostRandomU64, .{ .name = "roc_host_random_U64", .visibility = .hidden });
+        @export(&hostedHostRandomU128, .{ .name = "roc_host_random_U128", .visibility = .hidden });
 
         @export(&hostAlloc, .{ .name = "roc_alloc", .visibility = .hidden });
         @export(&hostDealloc, .{ .name = "roc_dealloc", .visibility = .hidden });
@@ -151,6 +170,10 @@ comptime {
         @export(&hostCrashed, .{ .name = "roc_crashed", .visibility = .hidden });
     }
 }
+
+// TigerBeetle hosted functions live in tb_host.zig; importing it above pulls in
+// its `roc_tb_create_accounts` export. The init/deinit calls below are the only
+// coupling — the heavy TB code stays out of this file.
 
 /// Platform host entrypoint
 fn platform_main(argc: usize, argv: [*][*:0]u8) c_int {
@@ -169,6 +192,7 @@ fn platform_main(argc: usize, argv: [*][*:0]u8) c_int {
 
     var roc_host = abi.makeRocHost(&host_env.roc_env);
     g_roc_host = &roc_host;
+    tb_host.init(&roc_host, host_env.gpa.allocator());
 
     // Build List(Str) from argc/argv
     std.log.debug("[HOST] Building args...", .{});
@@ -180,6 +204,9 @@ fn platform_main(argc: usize, argv: [*][*:0]u8) c_int {
 
     const exit_code = roc_main(args_list);
     std.log.debug("[HOST] Returned from roc, exit_code={d}", .{exit_code});
+
+    // Tear down the shared TigerBeetle client, if one was created.
+    tb_host.deinitClient();
 
     // Check for memory leaks before returning
     const leak_status = host_env.gpa.deinit();
