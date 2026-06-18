@@ -161,6 +161,7 @@ comptime {
         @export(&hostedHostPosixTime, .{ .name = "roc_host_posix_time", .visibility = .hidden });
         @export(&hostedHostRandomU64, .{ .name = "roc_host_random_U64", .visibility = .hidden });
         @export(&hostedHostRandomU128, .{ .name = "roc_host_random_U128", .visibility = .hidden });
+        @export(&tb_host.createAccounts, .{ .name = "roc_tb_create_accounts", .visibility = .hidden });
 
         @export(&hostAlloc, .{ .name = "roc_alloc", .visibility = .hidden });
         @export(&hostDealloc, .{ .name = "roc_dealloc", .visibility = .hidden });

@@ -107,7 +107,7 @@ const StatusTag = @FieldType(ResultRecord, "status");
 
 /// Hosted function: TigerBeetle.create_accounts!
 /// List(Account) => List({ status : CreateAccountStatus, timestamp : U64 })
-fn createAccounts(
+pub fn createAccounts(
     arg0: abi.RocListWith(abi.TigerBeetleAccount, false),
 ) callconv(.c) abi.RocListWith(ResultRecord, false) {
     const host = g_host.?;
@@ -218,10 +218,4 @@ fn fatal(comptime msg: []const u8) noreturn {
     const io = std.Io.Threaded.global_single_threaded.io();
     std.Io.File.stderr().writeStreamingAll(io, "[TigerBeetle] " ++ msg ++ "\n") catch {};
     std.process.exit(1);
-}
-
-comptime {
-    if (!builtin.is_test) {
-        @export(&createAccounts, .{ .name = "roc_tb_create_accounts", .visibility = .hidden });
-    }
 }
