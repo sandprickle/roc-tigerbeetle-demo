@@ -113,22 +113,6 @@ fn hostedHostPosixTime() callconv(.c) i128 {
     return @intCast(nanos);
 }
 
-fn hostedHostRandomU64() callconv(.c) u64 {
-    const io = std.Io.Threaded.global_single_threaded.io();
-    var buf = [_]u8{0} ** 8;
-    std.Io.random(io, &buf);
-
-    return @bitCast(buf);
-}
-
-fn hostedHostRandomU128() callconv(.c) u128 {
-    const io = std.Io.Threaded.global_single_threaded.io();
-    var buf = [_]u8{0} ** 16;
-    std.Io.random(io, &buf);
-
-    return @bitCast(buf);
-}
-
 fn hostAlloc(length: usize, alignment: usize) callconv(.c) ?*anyopaque {
     return abi.DefaultAllocators.rocAlloc(g_roc_host.?, length, alignment);
 }
