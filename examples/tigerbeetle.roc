@@ -20,7 +20,7 @@ main! = |_args| {
 
 	results = Tb.create_accounts!(accounts)
 
-	for { status, timestamp } in results {
+	for { timestamp, status } in results {
 		msg = match status {
 			Created => "  created (timestamp=${timestamp.to_str()})"
 			Exists => "  exists (timestamp=${timestamp.to_str()})"
