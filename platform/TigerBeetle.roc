@@ -1,5 +1,5 @@
 TigerBeetle := [].{
-	AccountFlags := U16.{
+	AccountFlags := [].{
 		none = 0.U16
 		linked = 1.U16
 		debits_must_not_exceed_credits = 2.U16
