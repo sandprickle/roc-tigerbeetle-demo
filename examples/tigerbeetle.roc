@@ -11,12 +11,18 @@ main! : List(Str) => Try({}, [Exit(I32)])
 main! = |_args| {
 	# Two valid accounts plus one invalid (id 0) to show both result paths.
 	accounts = [
-		Tb.Account.init({ id: 3, ledger: 700 }).code(10),
-		Tb.Account.init({ id: 2, ledger: 700 }).code(10),
+		Tb.Account.init({ id: Tb.id!(), ledger: 700 }).code(10),
+		Tb.Account.init({ id: Tb.id!(), ledger: 700 }).code(10),
 		Tb.Account.init({ id: 0, ledger: 700 }).code(10),
 	]
 
 	Stdout.line!("Creating ${accounts.len().to_str()} accounts...")
+
+	accounts.for_each!(
+		|account| {
+			Stdout.line!("  account ${account.id.to_str()}")
+		},
+	)
 
 	results = Tb.create_accounts!(accounts)
 
