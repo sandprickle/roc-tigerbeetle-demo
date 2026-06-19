@@ -143,8 +143,6 @@ comptime {
         @export(&hostedStdinLine, .{ .name = "roc_stdin_line", .visibility = .hidden });
         @export(&hostedStdoutLine, .{ .name = "roc_stdout_line", .visibility = .hidden });
         @export(&hostedHostPosixTime, .{ .name = "roc_host_posix_time", .visibility = .hidden });
-        @export(&hostedHostRandomU64, .{ .name = "roc_host_random_U64", .visibility = .hidden });
-        @export(&hostedHostRandomU128, .{ .name = "roc_host_random_U128", .visibility = .hidden });
         @export(&tb_host.createAccounts, .{ .name = "roc_tb_create_accounts", .visibility = .hidden });
         @export(&tb_host.nextId, .{ .name = "roc_tb_id", .visibility = .hidden });
 
