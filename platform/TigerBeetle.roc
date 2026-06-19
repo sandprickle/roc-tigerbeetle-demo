@@ -1,17 +1,4 @@
-import Utc
-import Random
-
 TigerBeetle := [].{
-	IdGenerator :: { lastTimeStamp : Utc }.{}
-
-	Id := { self : U128 }.{
-		from_numeral = |val| U128.from_numeral(val).map_ok(|id| { self: id })
-
-		to_str : Id -> Str
-		to_str = |{ self }| self.to_str()
-
-	}
-
 	AccountFlags := U16.{
 		none = 0.U16
 		linked = 1.U16
@@ -249,4 +236,8 @@ TigerBeetle := [].{
 			timestamp : U64,
 		},
 	)
+
+	# Generate a TigerBeetle time-based identifier (host-managed state keeps
+	# these monotonically increasing, even within a single millisecond).
+	id! : () => U128
 }

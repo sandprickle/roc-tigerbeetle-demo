@@ -162,6 +162,7 @@ comptime {
         @export(&hostedHostRandomU64, .{ .name = "roc_host_random_U64", .visibility = .hidden });
         @export(&hostedHostRandomU128, .{ .name = "roc_host_random_U128", .visibility = .hidden });
         @export(&tb_host.createAccounts, .{ .name = "roc_tb_create_accounts", .visibility = .hidden });
+        @export(&tb_host.nextId, .{ .name = "roc_tb_id", .visibility = .hidden });
 
         @export(&hostAlloc, .{ .name = "roc_alloc", .visibility = .hidden });
         @export(&hostDealloc, .{ .name = "roc_dealloc", .visibility = .hidden });
@@ -175,6 +176,11 @@ comptime {
 // TigerBeetle hosted functions live in tb_host.zig; importing it above pulls in
 // its `roc_tb_create_accounts` export. The init/deinit calls below are the only
 // coupling — the heavy TB code stays out of this file.
+
+test {
+    // Pull tb_host's unit tests (the id generator) into this test root.
+    _ = tb_host;
+}
 
 /// Platform host entrypoint
 fn platform_main(argc: usize, argv: [*][*:0]u8) c_int {

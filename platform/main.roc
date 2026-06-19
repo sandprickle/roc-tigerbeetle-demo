@@ -13,6 +13,7 @@ platform ""
 		"roc_host_random_U64": Host.random_U64!,
 		"roc_host_random_U128": Host.random_U128!,
 		"roc_tb_create_accounts": TigerBeetle.create_accounts!,
+		"roc_tb_id": TigerBeetle.id!,
 	}
 	targets: {
 		inputs: "targets/",

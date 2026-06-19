@@ -26,6 +26,139 @@ pub fn init(host: *abi.RocHost, gpa: std.mem.Allocator) void {
     g_gpa = gpa;
 }
 
+// --- id! (TigerBeetle time-based identifiers) ------------------------------
+//
+// 128-bit ids with a 48-bit millisecond timestamp in the high bits and 80 bits
+// of randomness in the low bits, packed as `timestamp << 80 | random`. They are
+// lexicographically sortable and monotonically increasing, which keeps
+// TigerBeetle's LSM tree efficient. Monotonicity within a single millisecond
+// requires persistent state, so this lives in the host. Matches the algorithm
+// used by every official TB client (see TigerBeetle's Rust client `id()`).
+//
+// Roc runs `main!` single-threaded, so plain globals are safe — no lock needed.
+
+const U80_MASK: u128 = 0xFFFF_FFFF_FFFF_FFFF_FFFF; // 20 hex F's = 80 bits
+const TS48_MASK: u128 = 0xFFFF_FFFF_FFFF; // 48-bit millisecond timestamp
+
+/// Generator state for TigerBeetle time-based ids. The transition logic in
+/// `next` is pure (it owns no clock or RNG) so it can be unit-tested
+/// deterministically; `nextId` below wires in the real clock and RNG.
+const IdState = struct {
+    last_ms: u64 = 0,
+    last_random: u128 = 0,
+
+    /// Advance the state for `now_ms` and return the packed 128-bit id. A fresh
+    /// random (from `randomFn`, masked to 80 bits) is drawn only when time moves
+    /// forward or the 80-bit random saturates; on the common same-ms path the
+    /// random is just incremented by one to stay monotonic.
+    fn next(self: *IdState, now_ms: u64, randomFn: *const fn () u128) u128 {
+        if (now_ms > self.last_ms) {
+            // Time advanced: adopt it and pick a fresh random.
+            self.last_ms = now_ms;
+            self.last_random = randomFn() & U80_MASK;
+        } else if (self.last_random == U80_MASK) {
+            // Same/earlier ms and the random would overflow 80 bits: carry into
+            // the next ms and re-randomize (ids run up to 1ms ahead until the
+            // clock catches up). Never reset the random to 0 — that would break
+            // monotonicity.
+            self.last_ms += 1;
+            self.last_random = randomFn() & U80_MASK;
+        } else {
+            // Same or earlier ms: keep the timestamp, bump the random by one.
+            self.last_random += 1;
+        }
+        return ((@as(u128, self.last_ms) & TS48_MASK) << 80) | self.last_random;
+    }
+};
+
+var g_id_state: IdState = .{};
+
+/// 128 random bits from the platform RNG; callers mask to the width they need.
+fn randomU128Bits() u128 {
+    const io = std.Io.Threaded.global_single_threaded.io();
+    var buf = [_]u8{0} ** 16;
+    std.Io.random(io, &buf);
+    return @bitCast(buf);
+}
+
+/// Hosted function: TigerBeetle.id! — exported as `roc_tb_id` by host.zig.
+pub fn nextId() callconv(.c) u128 {
+    const io = std.Io.Threaded.global_single_threaded.io();
+    const now_ns = std.Io.Clock.real.now(io).toNanoseconds(); // i128 nanos
+    const now_ms: u64 = if (now_ns <= 0) 0 else @intCast(@divFloor(now_ns, 1_000_000));
+    return g_id_state.next(now_ms, &randomU128Bits);
+}
+
+// Unit tests for the id transition logic. `next` takes its randomness as a
+// function pointer so these can pin it to a known value; the same-ms increment
+// path must not consume it at all.
+var test_random: u128 = 0;
+fn testRandom() u128 {
+    return test_random;
+}
+
+test "id: monotonic +1 within the same millisecond" {
+    var s: IdState = .{ .last_ms = 1000, .last_random = 5 };
+    test_random = 0xDEAD; // must NOT be consumed on the same-ms path
+    const a = s.next(1000, &testRandom);
+    const b = s.next(1000, &testRandom);
+    const c = s.next(1000, &testRandom);
+    try std.testing.expect(a < b and b < c);
+    try std.testing.expectEqual(@as(u128, 1000), a >> 80); // timestamp unchanged
+    try std.testing.expectEqual(@as(u128, 1000), c >> 80);
+    try std.testing.expectEqual(@as(u128, 6), a & U80_MASK); // random bumped by one
+    try std.testing.expectEqual(@as(u128, 7), b & U80_MASK);
+    try std.testing.expectEqual(@as(u128, 8), c & U80_MASK);
+}
+
+test "id: advancing time draws a fresh random and stays ordered" {
+    var s: IdState = .{}; // last_ms = 0, so the first call sees time advance
+    test_random = 0xAB;
+    const a = s.next(1000, &testRandom);
+    test_random = 0xCD;
+    const b = s.next(1001, &testRandom);
+    try std.testing.expectEqual(@as(u128, 1000), a >> 80);
+    try std.testing.expectEqual(@as(u128, 0xAB), a & U80_MASK);
+    try std.testing.expectEqual(@as(u128, 1001), b >> 80);
+    try std.testing.expectEqual(@as(u128, 0xCD), b & U80_MASK);
+    try std.testing.expect(a < b); // higher timestamp bits dominate
+}
+
+test "id: clock moving backward still yields monotonic ids" {
+    var s: IdState = .{ .last_ms = 1000, .last_random = 5 };
+    const prev = (@as(u128, 1000) << 80) | 5;
+    const id = s.next(900, &testRandom); // clock regressed
+    try std.testing.expect(id > prev);
+    try std.testing.expectEqual(@as(u128, 1000), id >> 80); // kept the old ms
+    try std.testing.expectEqual(@as(u128, 6), id & U80_MASK); // random + 1
+}
+
+test "id: 80-bit random overflow carries into the next millisecond" {
+    var s: IdState = .{ .last_ms = 1000, .last_random = U80_MASK };
+    const prev = (@as(u128, 1000) << 80) | U80_MASK;
+    test_random = 0x77;
+    const id = s.next(1000, &testRandom); // same ms, random saturated
+    try std.testing.expect(id > prev);
+    try std.testing.expectEqual(@as(u128, 1001), id >> 80); // carried +1ms
+    try std.testing.expectEqual(@as(u128, 0x77), id & U80_MASK); // fresh random
+}
+
+test "id: random is masked to 80 bits and never corrupts the timestamp" {
+    var s: IdState = .{};
+    test_random = ~@as(u128, 0); // all 128 bits set
+    const id = s.next(1000, &testRandom);
+    try std.testing.expectEqual(@as(u128, 1000), id >> 80); // timestamp intact
+    try std.testing.expectEqual(U80_MASK, id & U80_MASK); // clamped to 80 bits
+}
+
+test "id: timestamp is masked to 48 bits" {
+    var s: IdState = .{};
+    test_random = 0;
+    const huge_ms: u64 = (1 << 48) | 0x1234; // bit 48 must be dropped
+    const id = s.next(huge_ms, &testRandom);
+    try std.testing.expectEqual(@as(u128, 0x1234), id >> 80);
+}
+
 // --- client lifecycle ------------------------------------------------------
 
 const cluster_id: [16]u8 = [_]u8{0} ** 16; // local single-node cluster
