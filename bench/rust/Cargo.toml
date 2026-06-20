@@ -1,0 +1,20 @@
+[package]
+name = "rust_bench"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# The official TigerBeetle Rust client, used straight from a local checkout of the
+# tigerbeetle repo (it is not published to crates.io at a usable version — only a
+# 0.0.1 placeholder, plus an out-of-date community `tigerbeetle-unofficial`).
+#
+# Path assumes the tigerbeetle checkout sits at ~/src/oss/tigerbeetle alongside
+# this repo at ~/src/roc-tb-test. Adjust on the Linux box if the checkout differs.
+# The client's `build.rs` links a prebuilt static `libtb_client.a` from its
+# `assets/lib/<target>/` — produce it once with:
+#   cd ~/src/oss/tigerbeetle && ./zig/zig build clients:rust -Drelease
+tigerbeetle = { path = "../../../oss/tigerbeetle/src/clients/rust" }
+
+# Single-threaded executor for the async client (block_on), matching TB's own
+# Rust sample and keeping the driver single-threaded like the Go/Roc benches.
+futures = { version = "0.3", default-features = false, features = ["executor"] }
