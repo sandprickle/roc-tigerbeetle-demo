@@ -47,11 +47,60 @@ pub const Transfer = extern struct {
     timestamp: u64,
 };
 
+/// `tb_account_filter_t` — 128 bytes. Selects the transfers/balances involving
+/// one account for get_account_transfers / get_account_balances.
+pub const AccountFilter = extern struct {
+    account_id: u128,
+    user_data_128: u128,
+    user_data_64: u64,
+    user_data_32: u32,
+    code: u16,
+    reserved: [58]u8,
+    timestamp_min: u64,
+    timestamp_max: u64,
+    limit: u32,
+    flags: u32,
+};
+
+/// `tb_account_balance_t` — 128 bytes. A point-in-time balance returned by
+/// get_account_balances (only for accounts opened with the `history` flag).
+pub const AccountBalance = extern struct {
+    debits_pending: u128,
+    debits_posted: u128,
+    credits_pending: u128,
+    credits_posted: u128,
+    timestamp: u64,
+    reserved: [56]u8,
+};
+
+/// `tb_query_filter_t` — 64 bytes. Selects accounts/transfers by their secondary
+/// indexes for query_accounts / query_transfers.
+pub const QueryFilter = extern struct {
+    user_data_128: u128,
+    user_data_64: u64,
+    user_data_32: u32,
+    ledger: u32,
+    code: u16,
+    reserved: [6]u8,
+    timestamp_min: u64,
+    timestamp_max: u64,
+    limit: u32,
+    flags: u32,
+};
+
 /// `tb_create_account_result_t` — one entry per submitted account (dense).
 /// `status == .created` (0xFFFFFFFF) means success.
 pub const CreateAccountResult = extern struct {
     timestamp: u64,
     status: CreateAccountStatus,
+    reserved: u32 = 0,
+};
+
+/// `tb_create_transfer_result_t` — one entry per submitted transfer (dense).
+/// `status == .created` (0xFFFFFFFF) means success.
+pub const CreateTransferResult = extern struct {
+    timestamp: u64,
+    status: CreateTransferStatus,
     reserved: u32 = 0,
 };
 
@@ -138,6 +187,79 @@ pub const CreateAccountStatus = enum(u32) {
     _,
 };
 
+/// `TB_CREATE_TRANSFER_STATUS` — per-transfer result code (a `u32`).
+pub const CreateTransferStatus = enum(u32) {
+    created = 0xFFFFFFFF,
+    linked_event_failed = 1,
+    linked_event_chain_open = 2,
+    timestamp_must_be_zero = 3,
+    reserved_flag = 4,
+    id_must_not_be_zero = 5,
+    id_must_not_be_int_max = 6,
+    flags_are_mutually_exclusive = 7,
+    debit_account_id_must_not_be_zero = 8,
+    debit_account_id_must_not_be_int_max = 9,
+    credit_account_id_must_not_be_zero = 10,
+    credit_account_id_must_not_be_int_max = 11,
+    accounts_must_be_different = 12,
+    pending_id_must_be_zero = 13,
+    pending_id_must_not_be_zero = 14,
+    pending_id_must_not_be_int_max = 15,
+    pending_id_must_be_different = 16,
+    timeout_reserved_for_pending_transfer = 17,
+    ledger_must_not_be_zero = 19,
+    code_must_not_be_zero = 20,
+    debit_account_not_found = 21,
+    credit_account_not_found = 22,
+    accounts_must_have_the_same_ledger = 23,
+    transfer_must_have_the_same_ledger_as_accounts = 24,
+    pending_transfer_not_found = 25,
+    pending_transfer_not_pending = 26,
+    pending_transfer_has_different_debit_account_id = 27,
+    pending_transfer_has_different_credit_account_id = 28,
+    pending_transfer_has_different_ledger = 29,
+    pending_transfer_has_different_code = 30,
+    exceeds_pending_transfer_amount = 31,
+    pending_transfer_has_different_amount = 32,
+    pending_transfer_already_posted = 33,
+    pending_transfer_already_voided = 34,
+    pending_transfer_expired = 35,
+    exists_with_different_flags = 36,
+    exists_with_different_debit_account_id = 37,
+    exists_with_different_credit_account_id = 38,
+    exists_with_different_amount = 39,
+    exists_with_different_pending_id = 40,
+    exists_with_different_user_data_128 = 41,
+    exists_with_different_user_data_64 = 42,
+    exists_with_different_user_data_32 = 43,
+    exists_with_different_timeout = 44,
+    exists_with_different_code = 45,
+    exists = 46,
+    overflows_debits_pending = 47,
+    overflows_credits_pending = 48,
+    overflows_debits_posted = 49,
+    overflows_credits_posted = 50,
+    overflows_debits = 51,
+    overflows_credits = 52,
+    overflows_timeout = 53,
+    exceeds_credits = 54,
+    exceeds_debits = 55,
+    imported_event_expected = 56,
+    imported_event_not_expected = 57,
+    imported_event_timestamp_out_of_range = 58,
+    imported_event_timestamp_must_not_advance = 59,
+    imported_event_timestamp_must_not_regress = 60,
+    imported_event_timestamp_must_postdate_debit_account = 61,
+    imported_event_timestamp_must_postdate_credit_account = 62,
+    imported_event_timeout_must_be_zero = 63,
+    closing_transfer_must_be_pending = 64,
+    debit_account_already_closed = 65,
+    credit_account_already_closed = 66,
+    exists_with_different_ledger = 67,
+    id_already_failed = 68,
+    _,
+};
+
 // =============================================================================
 // Opaque/pinned handles
 // =============================================================================
@@ -208,6 +330,23 @@ comptime {
 
     std.debug.assert(@sizeOf(CreateAccountResult) == 16);
     std.debug.assert(@offsetOf(CreateAccountResult, "status") == 8);
+    std.debug.assert(@sizeOf(CreateTransferResult) == 16);
+    std.debug.assert(@offsetOf(CreateTransferResult, "status") == 8);
+
+    std.debug.assert(@sizeOf(AccountFilter) == 128);
+    std.debug.assert(@offsetOf(AccountFilter, "reserved") == 46);
+    std.debug.assert(@offsetOf(AccountFilter, "timestamp_min") == 104);
+    std.debug.assert(@offsetOf(AccountFilter, "limit") == 120);
+    std.debug.assert(@offsetOf(AccountFilter, "flags") == 124);
+
+    std.debug.assert(@sizeOf(AccountBalance) == 128);
+    std.debug.assert(@offsetOf(AccountBalance, "timestamp") == 64);
+    std.debug.assert(@offsetOf(AccountBalance, "reserved") == 72);
+
+    std.debug.assert(@sizeOf(QueryFilter) == 64);
+    std.debug.assert(@offsetOf(QueryFilter, "reserved") == 34);
+    std.debug.assert(@offsetOf(QueryFilter, "timestamp_min") == 40);
+    std.debug.assert(@offsetOf(QueryFilter, "flags") == 60);
 
     std.debug.assert(@sizeOf(Client) == 32);
 

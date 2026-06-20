@@ -496,8 +496,8 @@ pub const RocEnv = struct {
 
 /// Element type for __AnonStruct6
 pub const __AnonStruct6 = extern struct {
-    @"timestamp": u64,
-    @"status": CodeMustNotBeZeroOrCreatedOrCreditsPendingMustBeZeroOrCreditsPostedMustBeZeroOrDebitsPendingMustBeZeroOrDebitsPostedMustBeZeroOrExistsOrExistsWithDifferentCodeOrExistsWithDifferentFlagsOrExistsWithDifferentLedgerOrExistsWithDifferentUserData128OrExistsWithDifferentUserData32OrExistsWithDifferentUserData64OrFlagsAreMutuallyExclusiveOrIdMustNotBeIntMaxOrIdMustNotBeZeroOrImportedEventExpectedOrImportedEventNotExpectedOrImportedEventTimestampMustNotAdvanceOrImportedEventTimestampMustNotRegressOrImportedEventTimestampOutOfRangeOrLedgerMustNotBeZeroOrLinkedEventChainOpenOrLinkedEventFailedOrReservedFieldOrReservedFlagOrTimestampMustBeZero,
+    timestamp: u64,
+    status: CodeMustNotBeZeroOrCreatedOrCreditsPendingMustBeZeroOrCreditsPostedMustBeZeroOrDebitsPendingMustBeZeroOrDebitsPostedMustBeZeroOrExistsOrExistsWithDifferentCodeOrExistsWithDifferentFlagsOrExistsWithDifferentLedgerOrExistsWithDifferentUserData128OrExistsWithDifferentUserData32OrExistsWithDifferentUserData64OrFlagsAreMutuallyExclusiveOrIdMustNotBeIntMaxOrIdMustNotBeZeroOrImportedEventExpectedOrImportedEventNotExpectedOrImportedEventTimestampMustNotAdvanceOrImportedEventTimestampMustNotRegressOrImportedEventTimestampOutOfRangeOrLedgerMustNotBeZeroOrLinkedEventChainOpenOrLinkedEventFailedOrReservedFieldOrReservedFlagOrTimestampMustBeZero,
 };
 
 comptime {
@@ -509,25 +509,213 @@ comptime {
 
 /// Element type for TigerBeetle.Account
 pub const TigerBeetleAccount = extern struct {
-    @"credits_pending": u128,
-    @"credits_posted": u128,
-    @"debits_pending": u128,
-    @"debits_posted": u128,
-    @"id": u128,
-    @"user_data_128": u128,
-    @"timestamp": u64,
-    @"user_data_64": u64,
-    @"ledger": u32,
-    @"reserved": i32,
-    @"user_data_32": u32,
-    @"code": u16,
-    @"flags": u16,
+    credits_pending: u128,
+    credits_posted: u128,
+    debits_pending: u128,
+    debits_posted: u128,
+    id: u128,
+    user_data_128: u128,
+    timestamp: u64,
+    user_data_64: u64,
+    ledger: u32,
+    reserved: TigerBeetleReserved4,
+    user_data_32: u32,
+    code: u16,
+    flags: u16,
 };
 
 comptime {
     if (@sizeOf(usize) == 8) {
         if (@sizeOf(TigerBeetleAccount) != 128) @compileError("TigerBeetleAccount size mismatch");
         if (@alignOf(TigerBeetleAccount) != 16) @compileError("TigerBeetleAccount alignment mismatch");
+    }
+}
+
+/// Element type for TigerBeetle.Reserved4
+pub const TigerBeetleReserved4 = extern struct {
+    bytes: u32,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(TigerBeetleReserved4) != 4) @compileError("TigerBeetleReserved4 size mismatch");
+        if (@alignOf(TigerBeetleReserved4) != 4) @compileError("TigerBeetleReserved4 alignment mismatch");
+    }
+}
+
+/// Element type for __AnonStruct16
+pub const __AnonStruct16 = extern struct {
+    timestamp: u64,
+    status: AccountsMustBeDifferentOrAccountsMustHaveTheSameLedgerOrClosingTransferMustBePendingOrCodeMustNotBeZeroOrCreatedOrCreditAccountAlreadyClosedOrCreditAccountIdMustNotBeIntMaxOrCreditAccountIdMustNotBeZeroOrCreditAccountNotFoundOrDebitAccountAlreadyClosedOrDebitAccountIdMustNotBeIntMaxOrDebitAccountIdMustNotBeZeroOrDebitAccountNotFoundOrExceedsCreditsOrExceedsDebitsOrExceedsPendingTransferAmountOrExistsOrExistsWithDifferentAmountOrExistsWithDifferentCodeOrExistsWithDifferentCreditAccountIdOrExistsWithDifferentDebitAccountIdOrExistsWithDifferentFlagsOrExistsWithDifferentLedgerOrExistsWithDifferentPendingIdOrExistsWithDifferentTimeoutOrExistsWithDifferentUserData128OrExistsWithDifferentUserData32OrExistsWithDifferentUserData64OrFlagsAreMutuallyExclusiveOrIdAlreadyFailedOrIdMustNotBeIntMaxOrIdMustNotBeZeroOrImportedEventExpectedOrImportedEventNotExpectedOrImportedEventTimeoutMustBeZeroOrImportedEventTimestampMustNotAdvanceOrImportedEventTimestampMustNotRegressOrImportedEventTimestampMustPostdateCreditAccountOrImportedEventTimestampMustPostdateDebitAccountOrImportedEventTimestampOutOfRangeOrLedgerMustNotBeZeroOrLinkedEventChainOpenOrLinkedEventFailedOrOverflowsCreditsOrOverflowsCreditsPendingOrOverflowsCreditsPostedOrOverflowsDebitsOrOverflowsDebitsPendingOrOverflowsDebitsPostedOrOverflowsTimeoutOrPendingIdMustBeDifferentOrPendingIdMustBeZeroOrPendingIdMustNotBeIntMaxOrPendingIdMustNotBeZeroOrPendingTransferAlreadyPostedOrPendingTransferAlreadyVoidedOrPendingTransferExpiredOrPendingTransferHasDifferentAmountOrPendingTransferHasDifferentCodeOrPendingTransferHasDifferentCreditAccountIdOrPendingTransferHasDifferentDebitAccountIdOrPendingTransferHasDifferentLedgerOrPendingTransferNotFoundOrPendingTransferNotPendingOrReservedFlagOrTimeoutReservedForPendingTransferOrTimestampMustBeZeroOrTransferMustHaveTheSameLedgerAsAccounts,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(__AnonStruct16) != 16) @compileError("__AnonStruct16 size mismatch");
+        if (@alignOf(__AnonStruct16) != 8) @compileError("__AnonStruct16 alignment mismatch");
+    }
+}
+
+/// Element type for TigerBeetle.Transfer
+pub const TigerBeetleTransfer = extern struct {
+    amount: u128,
+    credit_account_id: u128,
+    debit_account_id: u128,
+    id: u128,
+    pending_id: u128,
+    user_data_128: u128,
+    timestamp: u64,
+    user_data_64: u64,
+    ledger: u32,
+    timeout: u32,
+    user_data_32: u32,
+    code: u16,
+    flags: u16,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(TigerBeetleTransfer) != 128) @compileError("TigerBeetleTransfer size mismatch");
+        if (@alignOf(TigerBeetleTransfer) != 16) @compileError("TigerBeetleTransfer alignment mismatch");
+    }
+}
+
+/// Element type for TigerBeetle.AccountFilter
+pub const TigerBeetleAccountFilter = extern struct {
+    account_id: u128,
+    reserved: TigerBeetleReserved58,
+    user_data_128: u128,
+    timestamp_max: u64,
+    timestamp_min: u64,
+    user_data_64: u64,
+    flags: u32,
+    limit: u32,
+    user_data_32: u32,
+    code: u16,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(TigerBeetleAccountFilter) != 144) @compileError("TigerBeetleAccountFilter size mismatch");
+        if (@alignOf(TigerBeetleAccountFilter) != 16) @compileError("TigerBeetleAccountFilter alignment mismatch");
+    }
+}
+
+/// Element type for TigerBeetle.Reserved58
+pub const TigerBeetleReserved58 = extern struct {
+    bytes: __AnonStruct23,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(TigerBeetleReserved58) != 64) @compileError("TigerBeetleReserved58 size mismatch");
+        if (@alignOf(TigerBeetleReserved58) != 16) @compileError("TigerBeetleReserved58 alignment mismatch");
+    }
+}
+
+/// Element type for __AnonStruct23
+pub const __AnonStruct23 = extern struct {
+    _0: u128,
+    _1: u128,
+    _2: u128,
+    _3: u64,
+    _4: u16,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(__AnonStruct23) != 64) @compileError("__AnonStruct23 size mismatch");
+        if (@alignOf(__AnonStruct23) != 16) @compileError("__AnonStruct23 alignment mismatch");
+    }
+}
+
+/// Element type for __AnonStruct25
+pub const __AnonStruct25 = extern struct {
+    credits_pending: u128,
+    credits_posted: u128,
+    debits_pending: u128,
+    debits_posted: u128,
+    reserved: TigerBeetleReserved56,
+    timestamp: u64,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(__AnonStruct25) != 144) @compileError("__AnonStruct25 size mismatch");
+        if (@alignOf(__AnonStruct25) != 16) @compileError("__AnonStruct25 alignment mismatch");
+    }
+}
+
+/// Element type for TigerBeetle.Reserved56
+pub const TigerBeetleReserved56 = extern struct {
+    bytes: __AnonStruct27,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(TigerBeetleReserved56) != 64) @compileError("TigerBeetleReserved56 size mismatch");
+        if (@alignOf(TigerBeetleReserved56) != 16) @compileError("TigerBeetleReserved56 alignment mismatch");
+    }
+}
+
+/// Element type for __AnonStruct27
+pub const __AnonStruct27 = extern struct {
+    _0: u128,
+    _1: u128,
+    _2: u128,
+    _3: u64,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(__AnonStruct27) != 64) @compileError("__AnonStruct27 size mismatch");
+        if (@alignOf(__AnonStruct27) != 16) @compileError("__AnonStruct27 alignment mismatch");
+    }
+}
+
+/// Element type for TigerBeetle.QueryFilter
+pub const TigerBeetleQueryFilter = extern struct {
+    user_data_128: u128,
+    timestamp_max: u64,
+    timestamp_min: u64,
+    user_data_64: u64,
+    flags: u32,
+    ledger: u32,
+    limit: u32,
+    reserved: TigerBeetleReserved6,
+    user_data_32: u32,
+    code: u16,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(TigerBeetleQueryFilter) != 80) @compileError("TigerBeetleQueryFilter size mismatch");
+        if (@alignOf(TigerBeetleQueryFilter) != 16) @compileError("TigerBeetleQueryFilter alignment mismatch");
+    }
+}
+
+/// Element type for TigerBeetle.Reserved6
+pub const TigerBeetleReserved6 = extern struct {
+    bytes: __AnonStruct30,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(TigerBeetleReserved6) != 8) @compileError("TigerBeetleReserved6 size mismatch");
+        if (@alignOf(TigerBeetleReserved6) != 4) @compileError("TigerBeetleReserved6 alignment mismatch");
+    }
+}
+
+/// Element type for __AnonStruct30
+pub const __AnonStruct30 = extern struct {
+    _0: u32,
+    _1: u16,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(__AnonStruct30) != 8) @compileError("__AnonStruct30 size mismatch");
+        if (@alignOf(__AnonStruct30) != 4) @compileError("__AnonStruct30 alignment mismatch");
     }
 }
 
@@ -560,6 +748,78 @@ pub const CodeMustNotBeZeroOrCreatedOrCreditsPendingMustBeZeroOrCreditsPostedMus
     reserved_field = 24,
     reserved_flag = 25,
     timestamp_must_be_zero = 26,
+};
+
+/// Tag union: AccountsMustBeDifferentOrAccountsMustHaveTheSameLedgerOrClosingTransferMustBePendingOrCodeMustNotBeZeroOrCreatedOrCreditAccountAlreadyClosedOrCreditAccountIdMustNotBeIntMaxOrCreditAccountIdMustNotBeZeroOrCreditAccountNotFoundOrDebitAccountAlreadyClosedOrDebitAccountIdMustNotBeIntMaxOrDebitAccountIdMustNotBeZeroOrDebitAccountNotFoundOrExceedsCreditsOrExceedsDebitsOrExceedsPendingTransferAmountOrExistsOrExistsWithDifferentAmountOrExistsWithDifferentCodeOrExistsWithDifferentCreditAccountIdOrExistsWithDifferentDebitAccountIdOrExistsWithDifferentFlagsOrExistsWithDifferentLedgerOrExistsWithDifferentPendingIdOrExistsWithDifferentTimeoutOrExistsWithDifferentUserData128OrExistsWithDifferentUserData32OrExistsWithDifferentUserData64OrFlagsAreMutuallyExclusiveOrIdAlreadyFailedOrIdMustNotBeIntMaxOrIdMustNotBeZeroOrImportedEventExpectedOrImportedEventNotExpectedOrImportedEventTimeoutMustBeZeroOrImportedEventTimestampMustNotAdvanceOrImportedEventTimestampMustNotRegressOrImportedEventTimestampMustPostdateCreditAccountOrImportedEventTimestampMustPostdateDebitAccountOrImportedEventTimestampOutOfRangeOrLedgerMustNotBeZeroOrLinkedEventChainOpenOrLinkedEventFailedOrOverflowsCreditsOrOverflowsCreditsPendingOrOverflowsCreditsPostedOrOverflowsDebitsOrOverflowsDebitsPendingOrOverflowsDebitsPostedOrOverflowsTimeoutOrPendingIdMustBeDifferentOrPendingIdMustBeZeroOrPendingIdMustNotBeIntMaxOrPendingIdMustNotBeZeroOrPendingTransferAlreadyPostedOrPendingTransferAlreadyVoidedOrPendingTransferExpiredOrPendingTransferHasDifferentAmountOrPendingTransferHasDifferentCodeOrPendingTransferHasDifferentCreditAccountIdOrPendingTransferHasDifferentDebitAccountIdOrPendingTransferHasDifferentLedgerOrPendingTransferNotFoundOrPendingTransferNotPendingOrReservedFlagOrTimeoutReservedForPendingTransferOrTimestampMustBeZeroOrTransferMustHaveTheSameLedgerAsAccounts
+pub const AccountsMustBeDifferentOrAccountsMustHaveTheSameLedgerOrClosingTransferMustBePendingOrCodeMustNotBeZeroOrCreatedOrCreditAccountAlreadyClosedOrCreditAccountIdMustNotBeIntMaxOrCreditAccountIdMustNotBeZeroOrCreditAccountNotFoundOrDebitAccountAlreadyClosedOrDebitAccountIdMustNotBeIntMaxOrDebitAccountIdMustNotBeZeroOrDebitAccountNotFoundOrExceedsCreditsOrExceedsDebitsOrExceedsPendingTransferAmountOrExistsOrExistsWithDifferentAmountOrExistsWithDifferentCodeOrExistsWithDifferentCreditAccountIdOrExistsWithDifferentDebitAccountIdOrExistsWithDifferentFlagsOrExistsWithDifferentLedgerOrExistsWithDifferentPendingIdOrExistsWithDifferentTimeoutOrExistsWithDifferentUserData128OrExistsWithDifferentUserData32OrExistsWithDifferentUserData64OrFlagsAreMutuallyExclusiveOrIdAlreadyFailedOrIdMustNotBeIntMaxOrIdMustNotBeZeroOrImportedEventExpectedOrImportedEventNotExpectedOrImportedEventTimeoutMustBeZeroOrImportedEventTimestampMustNotAdvanceOrImportedEventTimestampMustNotRegressOrImportedEventTimestampMustPostdateCreditAccountOrImportedEventTimestampMustPostdateDebitAccountOrImportedEventTimestampOutOfRangeOrLedgerMustNotBeZeroOrLinkedEventChainOpenOrLinkedEventFailedOrOverflowsCreditsOrOverflowsCreditsPendingOrOverflowsCreditsPostedOrOverflowsDebitsOrOverflowsDebitsPendingOrOverflowsDebitsPostedOrOverflowsTimeoutOrPendingIdMustBeDifferentOrPendingIdMustBeZeroOrPendingIdMustNotBeIntMaxOrPendingIdMustNotBeZeroOrPendingTransferAlreadyPostedOrPendingTransferAlreadyVoidedOrPendingTransferExpiredOrPendingTransferHasDifferentAmountOrPendingTransferHasDifferentCodeOrPendingTransferHasDifferentCreditAccountIdOrPendingTransferHasDifferentDebitAccountIdOrPendingTransferHasDifferentLedgerOrPendingTransferNotFoundOrPendingTransferNotPendingOrReservedFlagOrTimeoutReservedForPendingTransferOrTimestampMustBeZeroOrTransferMustHaveTheSameLedgerAsAccounts = enum(u8) {
+    accounts_must_be_different = 0,
+    accounts_must_have_the_same_ledger = 1,
+    closing_transfer_must_be_pending = 2,
+    code_must_not_be_zero = 3,
+    created = 4,
+    credit_account_already_closed = 5,
+    credit_account_id_must_not_be_int_max = 6,
+    credit_account_id_must_not_be_zero = 7,
+    credit_account_not_found = 8,
+    debit_account_already_closed = 9,
+    debit_account_id_must_not_be_int_max = 10,
+    debit_account_id_must_not_be_zero = 11,
+    debit_account_not_found = 12,
+    exceeds_credits = 13,
+    exceeds_debits = 14,
+    exceeds_pending_transfer_amount = 15,
+    exists = 16,
+    exists_with_different_amount = 17,
+    exists_with_different_code = 18,
+    exists_with_different_credit_account_id = 19,
+    exists_with_different_debit_account_id = 20,
+    exists_with_different_flags = 21,
+    exists_with_different_ledger = 22,
+    exists_with_different_pending_id = 23,
+    exists_with_different_timeout = 24,
+    exists_with_different_user_data128 = 25,
+    exists_with_different_user_data32 = 26,
+    exists_with_different_user_data64 = 27,
+    flags_are_mutually_exclusive = 28,
+    id_already_failed = 29,
+    id_must_not_be_int_max = 30,
+    id_must_not_be_zero = 31,
+    imported_event_expected = 32,
+    imported_event_not_expected = 33,
+    imported_event_timeout_must_be_zero = 34,
+    imported_event_timestamp_must_not_advance = 35,
+    imported_event_timestamp_must_not_regress = 36,
+    imported_event_timestamp_must_postdate_credit_account = 37,
+    imported_event_timestamp_must_postdate_debit_account = 38,
+    imported_event_timestamp_out_of_range = 39,
+    ledger_must_not_be_zero = 40,
+    linked_event_chain_open = 41,
+    linked_event_failed = 42,
+    overflows_credits = 43,
+    overflows_credits_pending = 44,
+    overflows_credits_posted = 45,
+    overflows_debits = 46,
+    overflows_debits_pending = 47,
+    overflows_debits_posted = 48,
+    overflows_timeout = 49,
+    pending_id_must_be_different = 50,
+    pending_id_must_be_zero = 51,
+    pending_id_must_not_be_int_max = 52,
+    pending_id_must_not_be_zero = 53,
+    pending_transfer_already_posted = 54,
+    pending_transfer_already_voided = 55,
+    pending_transfer_expired = 56,
+    pending_transfer_has_different_amount = 57,
+    pending_transfer_has_different_code = 58,
+    pending_transfer_has_different_credit_account_id = 59,
+    pending_transfer_has_different_debit_account_id = 60,
+    pending_transfer_has_different_ledger = 61,
+    pending_transfer_not_found = 62,
+    pending_transfer_not_pending = 63,
+    reserved_flag = 64,
+    timeout_reserved_for_pending_transfer = 65,
+    timestamp_must_be_zero = 66,
+    transfer_must_have_the_same_ledger_as_accounts = 67,
 };
 
 /// Tag discriminant for Try.
@@ -605,6 +865,118 @@ pub const TigerBeetleCreate_accountsArgs = extern struct {
     arg0: RocListWith(TigerBeetleAccount, false),
 };
 
+/// Arguments for TigerBeetle.create_transfers!
+/// Roc signature: List(TigerBeetle.Transfer) => List({ status : [AccountsMustBeDifferent, AccountsMustHaveTheSameLedger, ClosingTransferMustBePending, CodeMustNotBeZero, Created, CreditAccountAlreadyClosed, CreditAccountIdMustNotBeIntMax, CreditAccountIdMustNotBeZero, CreditAccountNotFound, DebitAccountAlreadyClosed, DebitAccountIdMustNotBeIntMax, DebitAccountIdMustNotBeZero, DebitAccountNotFound, ExceedsCredits, ExceedsDebits, ExceedsPendingTransferAmount, Exists, ExistsWithDifferentAmount, ExistsWithDifferentCode, ExistsWithDifferentCreditAccountId, ExistsWithDifferentDebitAccountId, ExistsWithDifferentFlags, ExistsWithDifferentLedger, ExistsWithDifferentPendingId, ExistsWithDifferentTimeout, ExistsWithDifferentUserData128, ExistsWithDifferentUserData32, ExistsWithDifferentUserData64, FlagsAreMutuallyExclusive, IdAlreadyFailed, IdMustNotBeIntMax, IdMustNotBeZero, ImportedEventExpected, ImportedEventNotExpected, ImportedEventTimeoutMustBeZero, ImportedEventTimestampMustNotAdvance, ImportedEventTimestampMustNotRegress, ImportedEventTimestampMustPostdateCreditAccount, ImportedEventTimestampMustPostdateDebitAccount, ImportedEventTimestampOutOfRange, LedgerMustNotBeZero, LinkedEventChainOpen, LinkedEventFailed, OverflowsCredits, OverflowsCreditsPending, OverflowsCreditsPosted, OverflowsDebits, OverflowsDebitsPending, OverflowsDebitsPosted, OverflowsTimeout, PendingIdMustBeDifferent, PendingIdMustBeZero, PendingIdMustNotBeIntMax, PendingIdMustNotBeZero, PendingTransferAlreadyPosted, PendingTransferAlreadyVoided, PendingTransferExpired, PendingTransferHasDifferentAmount, PendingTransferHasDifferentCode, PendingTransferHasDifferentCreditAccountId, PendingTransferHasDifferentDebitAccountId, PendingTransferHasDifferentLedger, PendingTransferNotFound, PendingTransferNotPending, ReservedFlag, TimeoutReservedForPendingTransfer, TimestampMustBeZero, TransferMustHaveTheSameLedgerAsAccounts], timestamp : U64 })
+/// Refcounted fields are owned by the hosted function.
+pub const TigerBeetleCreate_transfersArgs = extern struct {
+    arg0: RocListWith(TigerBeetleTransfer, false),
+};
+
+/// Arguments for TigerBeetle.get_account_balances!
+/// Roc signature: TigerBeetle.AccountFilter => List({ credits_pending : U128, credits_posted : U128, debits_pending : U128, debits_posted : U128, reserved : TigerBeetle.Reserved56, timestamp : U64 })
+/// Refcounted fields are owned by the hosted function.
+pub const TigerBeetleGet_account_balancesArgs = extern struct {
+    account_id: u128,
+    reserved: TigerBeetleReserved58,
+    user_data_128: u128,
+    timestamp_max: u64,
+    timestamp_min: u64,
+    user_data_64: u64,
+    flags: u32,
+    limit: u32,
+    user_data_32: u32,
+    code: u16,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(TigerBeetleGet_account_balancesArgs) != 144) @compileError("TigerBeetleGet_account_balancesArgs size mismatch");
+        if (@alignOf(TigerBeetleGet_account_balancesArgs) != 16) @compileError("TigerBeetleGet_account_balancesArgs alignment mismatch");
+    }
+}
+
+/// Arguments for TigerBeetle.get_account_transfers!
+/// Roc signature: TigerBeetle.AccountFilter => List(TigerBeetle.Transfer)
+/// Refcounted fields are owned by the hosted function.
+pub const TigerBeetleGet_account_transfersArgs = extern struct {
+    account_id: u128,
+    reserved: TigerBeetleReserved58,
+    user_data_128: u128,
+    timestamp_max: u64,
+    timestamp_min: u64,
+    user_data_64: u64,
+    flags: u32,
+    limit: u32,
+    user_data_32: u32,
+    code: u16,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(TigerBeetleGet_account_transfersArgs) != 144) @compileError("TigerBeetleGet_account_transfersArgs size mismatch");
+        if (@alignOf(TigerBeetleGet_account_transfersArgs) != 16) @compileError("TigerBeetleGet_account_transfersArgs alignment mismatch");
+    }
+}
+
+/// Arguments for TigerBeetle.lookup_accounts!
+/// Roc signature: List(U128) => List(TigerBeetle.Account)
+/// Refcounted fields are owned by the hosted function.
+pub const TigerBeetleLookup_accountsArgs = extern struct {
+    arg0: RocListWith(u128, false),
+};
+
+/// Arguments for TigerBeetle.lookup_transfers!
+/// Roc signature: List(U128) => List(TigerBeetle.Transfer)
+/// Refcounted fields are owned by the hosted function.
+pub const TigerBeetleLookup_transfersArgs = extern struct {
+    arg0: RocListWith(u128, false),
+};
+
+/// Arguments for TigerBeetle.query_accounts!
+/// Roc signature: TigerBeetle.QueryFilter => List(TigerBeetle.Account)
+/// Refcounted fields are owned by the hosted function.
+pub const TigerBeetleQuery_accountsArgs = extern struct {
+    user_data_128: u128,
+    timestamp_max: u64,
+    timestamp_min: u64,
+    user_data_64: u64,
+    flags: u32,
+    ledger: u32,
+    limit: u32,
+    reserved: TigerBeetleReserved6,
+    user_data_32: u32,
+    code: u16,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(TigerBeetleQuery_accountsArgs) != 80) @compileError("TigerBeetleQuery_accountsArgs size mismatch");
+        if (@alignOf(TigerBeetleQuery_accountsArgs) != 16) @compileError("TigerBeetleQuery_accountsArgs alignment mismatch");
+    }
+}
+
+/// Arguments for TigerBeetle.query_transfers!
+/// Roc signature: TigerBeetle.QueryFilter => List(TigerBeetle.Transfer)
+/// Refcounted fields are owned by the hosted function.
+pub const TigerBeetleQuery_transfersArgs = extern struct {
+    user_data_128: u128,
+    timestamp_max: u64,
+    timestamp_min: u64,
+    user_data_64: u64,
+    flags: u32,
+    ledger: u32,
+    limit: u32,
+    reserved: TigerBeetleReserved6,
+    user_data_32: u32,
+    code: u16,
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(TigerBeetleQuery_transfersArgs) != 80) @compileError("TigerBeetleQuery_transfersArgs size mismatch");
+        if (@alignOf(TigerBeetleQuery_transfersArgs) != 16) @compileError("TigerBeetleQuery_transfersArgs alignment mismatch");
+    }
+}
 
 // =============================================================================
 // Runtime Symbols
@@ -630,14 +1002,6 @@ pub extern fn roc_crashed(bytes: [*]const u8, len: usize) callconv(.c) void;
 /// Roc signature: {} => I128
 pub extern fn roc_host_posix_time() callconv(.c) i128;
 
-/// Hosted symbol for Host.random_U128!
-/// Roc signature: {} => U128
-pub extern fn roc_host_random_U128() callconv(.c) u128;
-
-/// Hosted symbol for Host.random_U64!
-/// Roc signature: {} => U64
-pub extern fn roc_host_random_U64() callconv(.c) u64;
-
 /// Hosted symbol for Stderr.line!
 /// Roc signature: Str => {}
 pub extern fn roc_stderr_line(arg0: RocStr) callconv(.c) void;
@@ -654,6 +1018,37 @@ pub extern fn roc_stdout_line(arg0: RocStr) callconv(.c) void;
 /// Roc signature: List(TigerBeetle.Account) => List({ status : [CodeMustNotBeZero, Created, CreditsPendingMustBeZero, CreditsPostedMustBeZero, DebitsPendingMustBeZero, DebitsPostedMustBeZero, Exists, ExistsWithDifferentCode, ExistsWithDifferentFlags, ExistsWithDifferentLedger, ExistsWithDifferentUserData128, ExistsWithDifferentUserData32, ExistsWithDifferentUserData64, FlagsAreMutuallyExclusive, IdMustNotBeIntMax, IdMustNotBeZero, ImportedEventExpected, ImportedEventNotExpected, ImportedEventTimestampMustNotAdvance, ImportedEventTimestampMustNotRegress, ImportedEventTimestampOutOfRange, LedgerMustNotBeZero, LinkedEventChainOpen, LinkedEventFailed, ReservedField, ReservedFlag, TimestampMustBeZero], timestamp : U64 })
 pub extern fn roc_tb_create_accounts(arg0: RocListWith(TigerBeetleAccount, false)) callconv(.c) RocListWith(__AnonStruct6, false);
 
+/// Hosted symbol for TigerBeetle.create_transfers!
+/// Roc signature: List(TigerBeetle.Transfer) => List({ status : [AccountsMustBeDifferent, AccountsMustHaveTheSameLedger, ClosingTransferMustBePending, CodeMustNotBeZero, Created, CreditAccountAlreadyClosed, CreditAccountIdMustNotBeIntMax, CreditAccountIdMustNotBeZero, CreditAccountNotFound, DebitAccountAlreadyClosed, DebitAccountIdMustNotBeIntMax, DebitAccountIdMustNotBeZero, DebitAccountNotFound, ExceedsCredits, ExceedsDebits, ExceedsPendingTransferAmount, Exists, ExistsWithDifferentAmount, ExistsWithDifferentCode, ExistsWithDifferentCreditAccountId, ExistsWithDifferentDebitAccountId, ExistsWithDifferentFlags, ExistsWithDifferentLedger, ExistsWithDifferentPendingId, ExistsWithDifferentTimeout, ExistsWithDifferentUserData128, ExistsWithDifferentUserData32, ExistsWithDifferentUserData64, FlagsAreMutuallyExclusive, IdAlreadyFailed, IdMustNotBeIntMax, IdMustNotBeZero, ImportedEventExpected, ImportedEventNotExpected, ImportedEventTimeoutMustBeZero, ImportedEventTimestampMustNotAdvance, ImportedEventTimestampMustNotRegress, ImportedEventTimestampMustPostdateCreditAccount, ImportedEventTimestampMustPostdateDebitAccount, ImportedEventTimestampOutOfRange, LedgerMustNotBeZero, LinkedEventChainOpen, LinkedEventFailed, OverflowsCredits, OverflowsCreditsPending, OverflowsCreditsPosted, OverflowsDebits, OverflowsDebitsPending, OverflowsDebitsPosted, OverflowsTimeout, PendingIdMustBeDifferent, PendingIdMustBeZero, PendingIdMustNotBeIntMax, PendingIdMustNotBeZero, PendingTransferAlreadyPosted, PendingTransferAlreadyVoided, PendingTransferExpired, PendingTransferHasDifferentAmount, PendingTransferHasDifferentCode, PendingTransferHasDifferentCreditAccountId, PendingTransferHasDifferentDebitAccountId, PendingTransferHasDifferentLedger, PendingTransferNotFound, PendingTransferNotPending, ReservedFlag, TimeoutReservedForPendingTransfer, TimestampMustBeZero, TransferMustHaveTheSameLedgerAsAccounts], timestamp : U64 })
+pub extern fn roc_tb_create_transfers(arg0: RocListWith(TigerBeetleTransfer, false)) callconv(.c) RocListWith(__AnonStruct16, false);
+
+/// Hosted symbol for TigerBeetle.get_account_balances!
+/// Roc signature: TigerBeetle.AccountFilter => List({ credits_pending : U128, credits_posted : U128, debits_pending : U128, debits_posted : U128, reserved : TigerBeetle.Reserved56, timestamp : U64 })
+pub extern fn roc_tb_get_account_balances(arg0: TigerBeetleAccountFilter) callconv(.c) RocListWith(__AnonStruct25, false);
+
+/// Hosted symbol for TigerBeetle.get_account_transfers!
+/// Roc signature: TigerBeetle.AccountFilter => List(TigerBeetle.Transfer)
+pub extern fn roc_tb_get_account_transfers(arg0: TigerBeetleAccountFilter) callconv(.c) RocListWith(TigerBeetleTransfer, false);
+
+/// Hosted symbol for TigerBeetle.id!
+/// Roc signature: {} => U128
+pub extern fn roc_tb_id() callconv(.c) u128;
+
+/// Hosted symbol for TigerBeetle.lookup_accounts!
+/// Roc signature: List(U128) => List(TigerBeetle.Account)
+pub extern fn roc_tb_lookup_accounts(arg0: RocListWith(u128, false)) callconv(.c) RocListWith(TigerBeetleAccount, false);
+
+/// Hosted symbol for TigerBeetle.lookup_transfers!
+/// Roc signature: List(U128) => List(TigerBeetle.Transfer)
+pub extern fn roc_tb_lookup_transfers(arg0: RocListWith(u128, false)) callconv(.c) RocListWith(TigerBeetleTransfer, false);
+
+/// Hosted symbol for TigerBeetle.query_accounts!
+/// Roc signature: TigerBeetle.QueryFilter => List(TigerBeetle.Account)
+pub extern fn roc_tb_query_accounts(arg0: TigerBeetleQueryFilter) callconv(.c) RocListWith(TigerBeetleAccount, false);
+
+/// Hosted symbol for TigerBeetle.query_transfers!
+/// Roc signature: TigerBeetle.QueryFilter => List(TigerBeetle.Transfer)
+pub extern fn roc_tb_query_transfers(arg0: TigerBeetleQueryFilter) callconv(.c) RocListWith(TigerBeetleTransfer, false);
 
 /// Default memory management functions for Roc platforms.
 ///
@@ -798,4 +1193,3 @@ pub fn makeRocHost(env: *RocEnv) RocHost {
 
 /// Entrypoint: main_for_host!
 pub extern fn roc_main(arg0: RocList(RocStr)) callconv(.c) i32;
-

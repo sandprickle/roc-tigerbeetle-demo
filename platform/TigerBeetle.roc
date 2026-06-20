@@ -131,10 +131,10 @@ TigerBeetle := [].{
 				amount : U128,
 				ledger : U32,
 			} -> Transfer
-			init = |{ id, amount, ledger }| {
+			init = |{ id, debit_account_id, credit_account_id, amount, ledger }| {
 				id,
-				debit_account_id: 0,
-				credit_account_id: 0,
+				debit_account_id,
+				credit_account_id,
 				amount,
 				pending_id: 0,
 				user_data_128: 0,
@@ -542,25 +542,18 @@ TigerBeetle := [].{
 			status : CreateTransferStatus,
 		},
 	)
-	create_transfers! = |_transfers| ...
 
 	lookup_accounts! : List(U128) => List(Account)
-	lookup_accounts! = |_ids| ...
 
 	lookup_transfers! : List(U128) => List(Transfer)
-	lookup_transfers! = |_ids| ...
 
 	get_account_transfers! : AccountFilter => List(Transfer)
-	get_account_transfers! = |_filter| ...
 
 	get_account_balances! : AccountFilter => List(AccountBalance)
-	get_account_balances! = |_filter| ...
 
 	query_accounts! : QueryFilter => List(Account)
-	query_accounts! = |_filter| ...
 
 	query_transfers! : QueryFilter => List(Transfer)
-	query_transfers! = |_filter| ...
 
 	# Generate a TigerBeetle time-based identifier (host-managed state keeps
 	# these monotonically increasing, even within a single millisecond).

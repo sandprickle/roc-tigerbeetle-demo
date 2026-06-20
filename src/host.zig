@@ -8,11 +8,18 @@ pub const std_options: std.Options = .{
     .allow_stack_tracing = false,
 };
 
+/// Leak-tracking DebugAllocator catches bugs but costs ~microseconds per
+/// allocation — it captures a stack trace on every alloc (see the marshal
+/// microbench: ~3.4 µs/alloc vs ~19 ns for a fast allocator). So use it only in
+/// Debug; release builds use the fast general-purpose allocator.
+const use_debug_allocator = builtin.mode == .Debug;
+const HostAllocator = if (use_debug_allocator) std.heap.DebugAllocator(.{}) else void;
+
 /// Host environment. Embeds `abi.RocEnv` so the Roc runtime sees a pointer
 /// to a standard `RocEnv` while hosted functions can recover the full
 /// `HostEnv` via `@fieldParentPtr`.
 const HostEnv = struct {
-    gpa: std.heap.DebugAllocator(.{}),
+    gpa: HostAllocator,
     stdin_reader: std.Io.File.Reader,
     roc_env: abi.RocEnv,
 };
@@ -144,6 +151,13 @@ comptime {
         @export(&hostedStdoutLine, .{ .name = "roc_stdout_line", .visibility = .hidden });
         @export(&hostedHostPosixTime, .{ .name = "roc_host_posix_time", .visibility = .hidden });
         @export(&tb_host.createAccounts, .{ .name = "roc_tb_create_accounts", .visibility = .hidden });
+        @export(&tb_host.createTransfers, .{ .name = "roc_tb_create_transfers", .visibility = .hidden });
+        @export(&tb_host.lookupAccounts, .{ .name = "roc_tb_lookup_accounts", .visibility = .hidden });
+        @export(&tb_host.lookupTransfers, .{ .name = "roc_tb_lookup_transfers", .visibility = .hidden });
+        @export(&tb_host.getAccountTransfers, .{ .name = "roc_tb_get_account_transfers", .visibility = .hidden });
+        @export(&tb_host.getAccountBalances, .{ .name = "roc_tb_get_account_balances", .visibility = .hidden });
+        @export(&tb_host.queryAccounts, .{ .name = "roc_tb_query_accounts", .visibility = .hidden });
+        @export(&tb_host.queryTransfers, .{ .name = "roc_tb_query_transfers", .visibility = .hidden });
         @export(&tb_host.nextId, .{ .name = "roc_tb_id", .visibility = .hidden });
 
         @export(&hostAlloc, .{ .name = "roc_alloc", .visibility = .hidden });
@@ -170,18 +184,20 @@ fn platform_main(argc: usize, argv: [*][*:0]u8) c_int {
     var stdin_buffer: [4096]u8 = undefined;
 
     var host_env = HostEnv{
-        .gpa = std.heap.DebugAllocator(.{}){},
+        .gpa = if (use_debug_allocator) .{} else {},
         .stdin_reader = std.Io.File.stdin().readerStreaming(io, &stdin_buffer),
         .roc_env = undefined,
     };
+    const allocator: std.mem.Allocator =
+        if (use_debug_allocator) host_env.gpa.allocator() else std.heap.smp_allocator;
     host_env.roc_env = .{
-        .allocator = host_env.gpa.allocator(),
+        .allocator = allocator,
         .roc_io = abi.RocIo.default(),
     };
 
     var roc_host = abi.makeRocHost(&host_env.roc_env);
     g_roc_host = &roc_host;
-    tb_host.init(&roc_host, host_env.gpa.allocator());
+    tb_host.init(&roc_host, allocator);
 
     // Build List(Str) from argc/argv
     std.log.debug("[HOST] Building args...", .{});
@@ -197,11 +213,14 @@ fn platform_main(argc: usize, argv: [*][*:0]u8) c_int {
     // Tear down the shared TigerBeetle client, if one was created.
     tb_host.deinitClient();
 
-    // Check for memory leaks before returning
-    const leak_status = host_env.gpa.deinit();
-    if (leak_status == .leak) {
-        std.log.err("\x1b[33mMemory leak detected!\x1b[0m", .{});
-        std.process.exit(1);
+    // Check for memory leaks before returning (Debug builds only; release builds
+    // use the fast allocator, which has no leak tracking).
+    if (use_debug_allocator) {
+        const leak_status = host_env.gpa.deinit();
+        if (leak_status == .leak) {
+            std.log.err("\x1b[33mMemory leak detected!\x1b[0m", .{});
+            std.process.exit(1);
+        }
     }
 
     return exit_code;

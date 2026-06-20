@@ -144,6 +144,29 @@ pub fn build(b: *std.Build) void {
     }
 
     test_step.dependOn(&run_integration.step);
+
+    // Bench step: per-item marshal/decode/alloc microbenchmark (no network).
+    // Drives the real tb_host entrypoints with tb_host.bench_loopback = true.
+    const bench_step = b.step("bench", "Run the marshaling microbenchmark (no network)");
+    const bench_exe = b.addExecutable(.{
+        .name = "marshal_bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/marshal_bench.zig"),
+            .target = native_target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
+    });
+    // tb_host's submit() references extern tb_client_* symbols (only called on the
+    // real path, but still linked), so the bench must link the vendored client lib.
+    if (detectNativeRocTarget(native_target.result)) |bench_roc_target| {
+        bench_exe.root_module.addObjectFile(b.path(
+            b.pathJoin(&.{ "platform", "targets", bench_roc_target.targetDir(), "libtb_client.a" }),
+        ));
+    }
+    const run_bench = b.addRunArtifact(bench_exe);
+    if (b.args) |args| run_bench.addArgs(args);
+    bench_step.dependOn(&run_bench.step);
 }
 
 /// Detect which RocTarget matches the native platform

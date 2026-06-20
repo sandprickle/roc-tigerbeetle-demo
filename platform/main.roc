@@ -11,6 +11,13 @@ platform ""
 		"roc_stdout_line": Stdout.line!,
 		"roc_host_posix_time": Host.posix_time!,
 		"roc_tb_create_accounts": TigerBeetle.create_accounts!,
+		"roc_tb_create_transfers": TigerBeetle.create_transfers!,
+		"roc_tb_lookup_accounts": TigerBeetle.lookup_accounts!,
+		"roc_tb_lookup_transfers": TigerBeetle.lookup_transfers!,
+		"roc_tb_get_account_transfers": TigerBeetle.get_account_transfers!,
+		"roc_tb_get_account_balances": TigerBeetle.get_account_balances!,
+		"roc_tb_query_accounts": TigerBeetle.query_accounts!,
+		"roc_tb_query_transfers": TigerBeetle.query_transfers!,
 		"roc_tb_id": TigerBeetle.id!,
 	}
 	targets: {
