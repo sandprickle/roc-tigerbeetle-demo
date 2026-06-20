@@ -1,4 +1,4 @@
-app [main!] { pf: platform "../platform/main.roc" }
+app [main!] { pf: platform "../../platform/main.roc" }
 
 import pf.Stdout
 import pf.Utc
@@ -31,7 +31,9 @@ submit_batch! = |{ debit, credit, ledger, count, first_id }| {
 				amount: 1,
 				ledger,
 			},
-		).code(10)
+		).code(
+			10,
+		)
 		$batch = List.append($batch, transfer)
 		$id = $id + 1.U128
 		$i = $i + 1

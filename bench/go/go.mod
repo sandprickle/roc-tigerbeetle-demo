@@ -1,8 +1,5 @@
 module go_bench
 
-go 1.22
+go 1.26.1
 
-require github.com/tigerbeetle/tigerbeetle-go v0.0.0
-
-// No network access; use the local TigerBeetle checkout's Go client.
-replace github.com/tigerbeetle/tigerbeetle-go => /Users/bryce/src/oss/tigerbeetle/src/clients/go
+require github.com/tigerbeetle/tigerbeetle-go v0.17.7
