@@ -36,37 +36,59 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // Unique account ids (like the Roc bench's Tb.id!()) so accounts never
     // collide across runs; the id space is separate from transfer ids.
-    let id_a = tb::id();
-    let id_b = tb::id();
+    let account_id_a = tb::id();
+    let account_id_b = tb::id();
     client
         .create_accounts(&[
-            tb::Account { id: id_a, ledger: LEDGER, code: CODE, ..Default::default() },
-            tb::Account { id: id_b, ledger: LEDGER, code: CODE, ..Default::default() },
+            tb::Account {
+                id: account_id_a,
+                ledger: LEDGER,
+                code: CODE,
+                ..Default::default()
+            },
+            tb::Account {
+                id: account_id_b,
+                ledger: LEDGER,
+                code: CODE,
+                ..Default::default()
+            },
         ])?
         .await?;
 
     println!("batch_size,batches,transfers,elapsed_ms,transfers_per_sec");
 
-    // Global, ever-increasing transfer id so every transfer is a fresh create.
-    let mut next_id: u128 = 1;
-
     // Single-request max for 128-byte transfers is 8189 (1 MiB - 256 B header -
     // 128 B multi-batch trailer slot, / 128), not the folklore 8190.
-    let configs = [(10usize, 1000usize), (100, 500), (1000, 50), (8189, 12)];
+    let configs: [(usize, usize); _] = [
+        // (10usize, 50usize),
+        // (100, 50),
+        (240, 50),
+        // (1000, 50),
+        // (5000, 50),
+        // (8189, 50),
+    ];
 
     for (size, batches) in configs {
         // One untimed warm-up batch.
-        next_id = submit_batch(&client, id_a, id_b, size, next_id).await?;
+        _ = submit_batch(&client, account_id_a, account_id_b, size, tb::id()).await?;
 
+        let mut next_id = tb::id();
         let start = Instant::now();
         for _ in 0..batches {
-            next_id = submit_batch(&client, id_a, id_b, size, next_id).await?;
+            next_id = submit_batch(&client, account_id_a, account_id_b, size, next_id).await?;
         }
         let elapsed = start.elapsed();
 
         let total = size * batches;
         let per_sec = (total as f64 / elapsed.as_secs_f64()) as u64;
-        println!("{},{},{},{},{}", size, batches, total, elapsed.as_millis(), per_sec);
+        println!(
+            "{},{},{},{},{}",
+            size,
+            batches,
+            total,
+            elapsed.as_millis(),
+            per_sec
+        );
     }
 
     let _ = client.close().await;

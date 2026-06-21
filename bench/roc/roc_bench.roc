@@ -17,26 +17,31 @@ import pf.TigerBeetle as Tb
 
 # Build `count` transfers (sequential ids from `first_id`), submit them as one
 # request, and return the next unused id. `_ =` discards the per-event results.
-submit_batch! : { debit : U128, credit : U128, ledger : U32, count : I128, first_id : U128 } => U128
+submit_batch! : {
+	debit : U128,
+	credit : U128,
+	ledger : U32,
+	count : I128,
+	first_id : U128,
+} => U128
 submit_batch! = |{ debit, credit, ledger, count, first_id }| {
-	var $id = first_id
 	var $batch = []
-	var $i = 0
-	while $i < count {
-		transfer = Tb.Transfer.init(
-			{
-				id: $id,
-				debit_account_id: debit,
-				credit_account_id: credit,
-				amount: 1,
-				ledger,
-			},
-		).code(
-			10,
+	var $id = first_id
+	for _i in 0..<count {
+		$batch = $batch.append(
+			Tb.Transfer.init(
+				{
+					id: $id,
+					debit_account_id: debit,
+					credit_account_id: credit,
+					amount: 1,
+					ledger,
+				},
+			).code(
+				10,
+			),
 		)
-		$batch = List.append($batch, transfer)
-		$id = $id + 1.U128
-		$i = $i + 1
+		$id = $id + 1
 	}
 	_ = Tb.create_transfers!($batch)
 	$id
@@ -46,38 +51,53 @@ main! : List(Str) => Try({}, [Exit(I32)])
 main! = |_args| {
 	ledger = 700
 
-	id_a = Tb.id!()
-	id_b = Tb.id!()
+	acct_id_a = Tb.id!()
+	acct_id_b = Tb.id!()
+
 	accounts = [
-		Tb.Account.init({ id: id_a, ledger }).code(10),
-		Tb.Account.init({ id: id_b, ledger }).code(10),
+		Tb.Account.init({ id: acct_id_a, ledger }).code(10),
+		Tb.Account.init({ id: acct_id_b, ledger }).code(10),
 	]
 	_ = Tb.create_accounts!(accounts)
 
 	Stdout.line!("batch_size,batches,transfers,elapsed_ms,transfers_per_sec")
 
-	# Global, ever-increasing transfer id so every transfer is a fresh create.
-	var $next_id = 1.U128
-
 	configs = [
-		{ size: 10, batches: 1000 },
-		{ size: 100, batches: 500 },
-		{ size: 1000, batches: 50 },
-		# Single-request max for 128-byte transfers: (1 MiB - 256B header - 128B
-		# multi-batch trailer slot) / 128 = 8189. (The folklore "8190" overflows by
-		# one in TigerBeetle's current multi-batch wire format.)
-		{ size: 8189, batches: 12 },
+		# { size: 10, batches: 50 },
+		# { size: 100, batches: 50 },
+		{ size: 240, batches: 50 },
+		# { size: 1000, batches: 50 },
+		# { size: 5000, batches: 10 },
+		# { size: 8189, batches: 50 },
 	]
 
 	for cfg in configs {
 		# One untimed warm-up batch.
-		$next_id = submit_batch!({ debit: id_a, credit: id_b, ledger, count: cfg.size, first_id: $next_id })
+		_ = submit_batch!(
+			{
+				debit: acct_id_a,
+				credit: acct_id_b,
+				ledger,
+				count: cfg.size,
+				first_id: Tb.id!(),
+			},
+		)
+
+		# Initialize a transfer ID and then increment so that we aren't
+		# measuring Tb.id!
+		var $id = Tb.id!()
 
 		start = Utc.now!()
-		var $b = 0
-		while $b < cfg.batches {
-			$next_id = submit_batch!({ debit: id_a, credit: id_b, ledger, count: cfg.size, first_id: $next_id })
-			$b = $b + 1
+		for _ in 0..<cfg.batches {
+			$id = submit_batch!(
+				{
+					debit: acct_id_a,
+					credit: acct_id_b,
+					ledger,
+					count: cfg.size,
+					first_id: $id,
+				},
+			)
 		}
 		elapsed_ns = Utc.now!().to_nanos() - start.to_nanos()
 
