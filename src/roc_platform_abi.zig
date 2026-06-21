@@ -509,19 +509,19 @@ comptime {
 
 /// Element type for TigerBeetle.Account
 pub const TigerBeetleAccount = extern struct {
-    credits_pending: u128,
-    credits_posted: u128,
+    id: u128,
     debits_pending: u128,
     debits_posted: u128,
-    id: u128,
+    credits_pending: u128,
+    credits_posted: u128,
     user_data_128: u128,
-    timestamp: u64,
     user_data_64: u64,
-    ledger: u32,
-    reserved: TigerBeetleReserved4,
     user_data_32: u32,
+    reserved: TigerBeetleReserved4,
+    ledger: u32,
     code: u16,
     flags: u16,
+    timestamp: u64,
 };
 
 comptime {
@@ -558,19 +558,19 @@ comptime {
 
 /// Element type for TigerBeetle.Transfer
 pub const TigerBeetleTransfer = extern struct {
-    amount: u128,
-    credit_account_id: u128,
-    debit_account_id: u128,
     id: u128,
+    debit_account_id: u128,
+    credit_account_id: u128,
+    amount: u128,
     pending_id: u128,
     user_data_128: u128,
-    timestamp: u64,
     user_data_64: u64,
-    ledger: u32,
-    timeout: u32,
     user_data_32: u32,
+    timeout: u32,
+    ledger: u32,
     code: u16,
     flags: u16,
+    timestamp: u64,
 };
 
 comptime {
@@ -583,15 +583,15 @@ comptime {
 /// Element type for TigerBeetle.AccountFilter
 pub const TigerBeetleAccountFilter = extern struct {
     account_id: u128,
-    reserved: TigerBeetleReserved58,
     user_data_128: u128,
-    timestamp_max: u64,
-    timestamp_min: u64,
     user_data_64: u64,
-    flags: u32,
-    limit: u32,
     user_data_32: u32,
     code: u16,
+    reserved: TigerBeetleReserved58,
+    timestamp_min: u64,
+    timestamp_max: u64,
+    limit: u32,
+    flags: u32,
 };
 
 comptime {
@@ -676,15 +676,15 @@ comptime {
 /// Element type for TigerBeetle.QueryFilter
 pub const TigerBeetleQueryFilter = extern struct {
     user_data_128: u128,
-    timestamp_max: u64,
-    timestamp_min: u64,
     user_data_64: u64,
-    flags: u32,
-    ledger: u32,
-    limit: u32,
-    reserved: TigerBeetleReserved6,
     user_data_32: u32,
+    ledger: u32,
     code: u16,
+    reserved: TigerBeetleReserved6,
+    timestamp_min: u64,
+    timestamp_max: u64,
+    limit: u32,
+    flags: u32,
 };
 
 comptime {
@@ -877,15 +877,15 @@ pub const TigerBeetleCreate_transfersArgs = extern struct {
 /// Refcounted fields are owned by the hosted function.
 pub const TigerBeetleGet_account_balancesArgs = extern struct {
     account_id: u128,
-    reserved: TigerBeetleReserved58,
     user_data_128: u128,
-    timestamp_max: u64,
-    timestamp_min: u64,
     user_data_64: u64,
-    flags: u32,
-    limit: u32,
     user_data_32: u32,
     code: u16,
+    reserved: TigerBeetleReserved58,
+    timestamp_min: u64,
+    timestamp_max: u64,
+    limit: u32,
+    flags: u32,
 };
 
 comptime {
@@ -900,15 +900,15 @@ comptime {
 /// Refcounted fields are owned by the hosted function.
 pub const TigerBeetleGet_account_transfersArgs = extern struct {
     account_id: u128,
-    reserved: TigerBeetleReserved58,
     user_data_128: u128,
-    timestamp_max: u64,
-    timestamp_min: u64,
     user_data_64: u64,
-    flags: u32,
-    limit: u32,
     user_data_32: u32,
     code: u16,
+    reserved: TigerBeetleReserved58,
+    timestamp_min: u64,
+    timestamp_max: u64,
+    limit: u32,
+    flags: u32,
 };
 
 comptime {
@@ -937,15 +937,15 @@ pub const TigerBeetleLookup_transfersArgs = extern struct {
 /// Refcounted fields are owned by the hosted function.
 pub const TigerBeetleQuery_accountsArgs = extern struct {
     user_data_128: u128,
-    timestamp_max: u64,
-    timestamp_min: u64,
     user_data_64: u64,
-    flags: u32,
-    ledger: u32,
-    limit: u32,
-    reserved: TigerBeetleReserved6,
     user_data_32: u32,
+    ledger: u32,
     code: u16,
+    reserved: TigerBeetleReserved6,
+    timestamp_min: u64,
+    timestamp_max: u64,
+    limit: u32,
+    flags: u32,
 };
 
 comptime {
@@ -960,15 +960,15 @@ comptime {
 /// Refcounted fields are owned by the hosted function.
 pub const TigerBeetleQuery_transfersArgs = extern struct {
     user_data_128: u128,
-    timestamp_max: u64,
-    timestamp_min: u64,
     user_data_64: u64,
-    flags: u32,
-    ledger: u32,
-    limit: u32,
-    reserved: TigerBeetleReserved6,
     user_data_32: u32,
+    ledger: u32,
     code: u16,
+    reserved: TigerBeetleReserved6,
+    timestamp_min: u64,
+    timestamp_max: u64,
+    limit: u32,
+    flags: u32,
 };
 
 comptime {

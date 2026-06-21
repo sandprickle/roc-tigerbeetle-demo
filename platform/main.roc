@@ -24,7 +24,7 @@ platform ""
 		inputs: "targets/",
 		x64mac: { inputs: ["libhost.a", app] },
 		arm64mac: { inputs: ["libhost.a", "libtb_client.a", app] },
-		x64musl: { inputs: ["crt1.o", "libhost.a", app, "libc.a"] },
+		x64musl: { inputs: ["crt1.o", "libhost.a", "libtb_client.a", app, "libc.a"] },
 		arm64musl: { inputs: ["crt1.o", "libhost.a", app, "libc.a"] },
 		x64win: { inputs: ["host.lib", app] },
 		arm64win: { inputs: ["host.lib", app] },

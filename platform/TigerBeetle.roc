@@ -46,7 +46,7 @@ TigerBeetle := [].{
 		user_data_128 : U128,
 		user_data_64 : U64,
 		user_data_32 : U32,
-		reserved : Reserved4,
+		_reserved : U32,
 		ledger : U32,
 		code : U16,
 		flags : U16,
@@ -65,7 +65,6 @@ TigerBeetle := [].{
 			user_data_128: 0,
 			user_data_64: 0,
 			user_data_32: 0,
-			reserved: 0,
 			ledger,
 			code: 0,
 			flags: 0,
@@ -203,65 +202,15 @@ TigerBeetle := [].{
 
 		}
 
-	# Fixed-size reserved regions that can only ever hold zero. Each opaque `bytes`
-	# field matches its C struct's reserved size — a single integer, or a tuple
-	# summing to it — and the (inferred) `from_numeral` lets the literal `0`
-	# construct one while rejecting every other literal at compile time, so a
-	# reserved field is zero-locked.
-	Reserved4 :: { bytes : U32 }.{
-		from_numeral = |numeral| match U8.from_numeral(numeral) {
-			Ok(0) => {
-				zeroed : Reserved4
-				zeroed = { bytes: 0 }
-				Ok(zeroed)
-			}
-			_ => Err(InvalidNumeral("reserved fields must be 0"))
-		}
-	}
-
-	Reserved6 :: { bytes : (U32, U16) }.{
-		from_numeral = |numeral| match U8.from_numeral(numeral) {
-			Ok(0) => {
-				zeroed : Reserved6
-				zeroed = { bytes: (0, 0) }
-				Ok(zeroed)
-			}
-			_ => Err(InvalidNumeral("reserved fields must be 0"))
-		}
-	}
-
-	Reserved56 :: { bytes : (U128, U128, U128, U64) }.{
-		from_numeral = |numeral| match U8.from_numeral(numeral) {
-			Ok(0) => {
-				zeroed : Reserved56
-				zeroed = { bytes: (0, 0, 0, 0) }
-				Ok(zeroed)
-			}
-			_ => Err(InvalidNumeral("reserved fields must be 0"))
-		}
-	}
-
-	Reserved58 :: { bytes : (U128, U128, U128, U64, U16) }.{
-		from_numeral = |numeral| match U8.from_numeral(numeral) {
-			Ok(0) => {
-				zeroed : Reserved58
-				zeroed = { bytes: (0, 0, 0, 0, 0) }
-				Ok(zeroed)
-			}
-			_ => Err(InvalidNumeral("reserved fields must be 0"))
-		}
-	}
-
 	# `tb_account_filter_t` — selects the transfers/balances involving one account
-	# for get_account_transfers! and get_account_balances!. `reserved` is a
-	# zero-only Reserved58 mirroring the C struct's `reserved[58]` padding.
+	# for get_account_transfers! and get_account_balances!.
 	AccountFilter := {
 		account_id : U128,
 		user_data_128 : U128,
 		user_data_64 : U64,
 		user_data_32 : U32,
 		code : U16,
-		reserved : Reserved58,
+		_reserved : (U128, U128, U128, U64, U16), # 58 bytes
 		timestamp_min : U64,
 		timestamp_max : U64,
 		limit : U32,
@@ -276,7 +225,6 @@ TigerBeetle := [].{
 			user_data_64: 0,
 			user_data_32: 0,
 			code: 0,
-			reserved: 0,
 			timestamp_min: 0,
 			timestamp_max: 0,
 			limit: 0,
@@ -334,26 +282,24 @@ TigerBeetle := [].{
 
 	# `tb_account_balance_t` — a point-in-time balance returned by
 	# get_account_balances! (only for accounts opened with the `history` flag).
-	# `reserved` is a zero-only Reserved56 mirroring the C struct's `reserved[56]`.
 	AccountBalance : {
 		debits_pending : U128,
 		debits_posted : U128,
 		credits_pending : U128,
 		credits_posted : U128,
 		timestamp : U64,
-		reserved : Reserved56,
+		reserved : (U128, U128, U128, U64), # 56 bytes
 	}
 
 	# `tb_query_filter_t` — selects accounts/transfers by their secondary indexes
-	# for query_accounts! and query_transfers!. `reserved` is a zero-only
-	# Reserved6 mirroring the C struct's `reserved[6]` padding.
+	# for query_accounts! and query_transfers!.
 	QueryFilter := {
 		user_data_128 : U128,
 		user_data_64 : U64,
 		user_data_32 : U32,
 		ledger : U32,
 		code : U16,
-		reserved : Reserved6,
+		_reserved : (U32, U16), # 6 bytes
 		timestamp_min : U64,
 		timestamp_max : U64,
 		limit : U32,
@@ -366,7 +312,6 @@ TigerBeetle := [].{
 			user_data_32: 0,
 			ledger: 0,
 			code: 0,
-			reserved: 0,
 			timestamp_min: 0,
 			timestamp_max: 0,
 			limit: 0,
@@ -529,19 +474,17 @@ TigerBeetle := [].{
 		IdAlreadyFailed,
 	]
 
-	create_accounts! : List(Account) => List(
-		{
-			timestamp : U64,
-			status : CreateAccountStatus,
-		},
-	)
+	CreateAccountsResult : {
+		timestamp : U64,
+		status : CreateAccountStatus,
+	}
+	create_accounts! : List(Account) => List(CreateAccountsResult)
 
-	create_transfers! : List(Transfer) => List(
-		{
-			timestamp : U64,
-			status : CreateTransferStatus,
-		},
-	)
+	CreateTransfersResult : {
+		timestamp : U64,
+		status : CreateTransferStatus,
+	}
+	create_transfers! : List(Transfer) => List(CreateTransfersResult)
 
 	lookup_accounts! : List(U128) => List(Account)
 

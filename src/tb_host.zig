@@ -317,18 +317,23 @@ pub fn createAccounts(
     const n = roc_accounts.len;
     if (n == 0) return abi.RocListWith(AccountResultRecord, false).empty();
 
-    // Roc reorders record fields, so marshal into TB's C layout field-by-field.
-    const tb_accounts = gpa.alloc(tb.Account, n) catch fatal("out of memory");
-    defer gpa.free(tb_accounts);
-    for (roc_accounts, tb_accounts) |src, *dst| dst.* = accountToTb(src);
-
     // Dense results: one tb_create_account_result_t per submitted account.
     const results = gpa.alloc(tb.CreateAccountResult, n) catch fatal("out of memory");
     defer gpa.free(results);
-    const n_out = submit(.create_accounts, std.mem.sliceAsBytes(tb_accounts), std.mem.sliceAsBytes(results));
+    const n_out = submit(
+        .create_accounts,
+        std.mem.sliceAsBytes(roc_accounts),
+        std.mem.sliceAsBytes(results),
+    );
 
     const count = n_out / @sizeOf(tb.CreateAccountResult);
-    return decodeList(tb.CreateAccountResult, AccountResultRecord, host, results[0..count], accountResultToRoc);
+    return decodeList(
+        tb.CreateAccountResult,
+        AccountResultRecord,
+        host,
+        results[0..count],
+        accountResultToRoc,
+    );
 }
 
 /// Hosted function: TigerBeetle.create_transfers!
@@ -346,14 +351,16 @@ pub fn createTransfers(
     const n = roc_transfers.len;
     if (n == 0) return abi.RocListWith(TransferResultRecord, false).empty();
 
-    const tb_transfers = gpa.alloc(tb.Transfer, n) catch fatal("out of memory");
-    defer gpa.free(tb_transfers);
-    for (roc_transfers, tb_transfers) |src, *dst| dst.* = transferToTb(src);
-
     // Dense results: one tb_create_transfer_result_t per submitted transfer.
-    const results = gpa.alloc(tb.CreateTransferResult, n) catch fatal("out of memory");
+    const results = gpa.alloc(tb.CreateTransferResult, n) catch fatal(
+        "out of memory",
+    );
     defer gpa.free(results);
-    const n_out = submit(.create_transfers, std.mem.sliceAsBytes(tb_transfers), std.mem.sliceAsBytes(results));
+    const n_out = submit(
+        .create_transfers,
+        std.mem.sliceAsBytes(roc_transfers),
+        std.mem.sliceAsBytes(results),
+    );
 
     const count = n_out / @sizeOf(tb.CreateTransferResult);
     return decodeList(tb.CreateTransferResult, TransferResultRecord, host, results[0..count], transferResultToRoc);
@@ -512,24 +519,6 @@ pub fn queryTransfers(
 // today — every field is copied explicitly. When the layouts converge these
 // collapse to a pointer cast and the request-side allocations above disappear.
 
-fn accountToTb(src: abi.TigerBeetleAccount) tb.Account {
-    return .{
-        .id = src.id,
-        .debits_pending = src.debits_pending,
-        .debits_posted = src.debits_posted,
-        .credits_pending = src.credits_pending,
-        .credits_posted = src.credits_posted,
-        .user_data_128 = src.user_data_128,
-        .user_data_64 = src.user_data_64,
-        .user_data_32 = src.user_data_32,
-        .reserved = 0,
-        .ledger = src.ledger,
-        .code = src.code,
-        .flags = src.flags,
-        .timestamp = src.timestamp,
-    };
-}
-
 fn accountToRoc(src: tb.Account) abi.TigerBeetleAccount {
     return .{
         .id = src.id,
@@ -541,24 +530,6 @@ fn accountToRoc(src: tb.Account) abi.TigerBeetleAccount {
         .user_data_64 = src.user_data_64,
         .user_data_32 = src.user_data_32,
         .reserved = .{ .bytes = 0 },
-        .ledger = src.ledger,
-        .code = src.code,
-        .flags = src.flags,
-        .timestamp = src.timestamp,
-    };
-}
-
-fn transferToTb(src: abi.TigerBeetleTransfer) tb.Transfer {
-    return .{
-        .id = src.id,
-        .debit_account_id = src.debit_account_id,
-        .credit_account_id = src.credit_account_id,
-        .amount = src.amount,
-        .pending_id = src.pending_id,
-        .user_data_128 = src.user_data_128,
-        .user_data_64 = src.user_data_64,
-        .user_data_32 = src.user_data_32,
-        .timeout = src.timeout,
         .ledger = src.ledger,
         .code = src.code,
         .flags = src.flags,
