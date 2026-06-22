@@ -282,7 +282,7 @@ TigerBeetle := [].{
 
 	# `tb_account_balance_t` — a point-in-time balance returned by
 	# get_account_balances! (only for accounts opened with the `history` flag).
-	AccountBalance : {
+	AccountBalance := {
 		debits_pending : U128,
 		debits_posted : U128,
 		credits_pending : U128,
