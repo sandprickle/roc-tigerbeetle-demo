@@ -12,6 +12,6 @@ tb="${TIGERBEETLE:-tigerbeetle}"
 
 rm -rf ./0_0.tigerbeetle
 
-"$tb" format --cluster=0 --replica=0 --replica-count=1 ./0_0.tigerbeetle
+"$tb" format --cluster=0 --replica=0 --replica-count=1 --development ./0_0.tigerbeetle
 
-exec "$tb" start --addresses=3000 ./0_0.tigerbeetle
+exec "$tb" start --addresses=3000 --development ./0_0.tigerbeetle
