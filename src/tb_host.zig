@@ -16,6 +16,38 @@ const builtin = @import("builtin");
 const abi = @import("roc_platform_abi.zig");
 const tb = @import("tb_client.zig");
 
+// Roc now lays out nominal/opaque record types (declared with `:=` / `::`) in
+// declaration order, reordering fields only when it reduces padding. That makes
+// these Roc records byte-for-byte identical to TigerBeetle's C client structs, so
+// the host can hand a Roc value straight to TB and read TB's results straight
+// back into a Roc list with no per-field marshaling. The assertions below pin
+// that equivalence: if either side's layout ever drifts, the build fails loudly
+// here instead of silently corrupting memory at runtime.
+//
+// CreateAccountsResult / CreateTransfersResult are deliberately excluded — their
+// `status` is a u8 Roc tag vs TB's u32 result code, so they never match and keep
+// going through the explicit converters below.
+comptime {
+    assertSameLayout(abi.TigerBeetleAccount, tb.Account, "Account");
+    assertSameLayout(abi.TigerBeetleTransfer, tb.Transfer, "Transfer");
+    assertSameLayout(abi.TigerBeetleAccountFilter, tb.AccountFilter, "AccountFilter");
+    assertSameLayout(abi.TigerBeetleAccountBalance, tb.AccountBalance, "AccountBalance");
+    assertSameLayout(abi.TigerBeetleQueryFilter, tb.QueryFilter, "QueryFilter");
+}
+
+/// Compile error unless `Roc` and `Tb` have identical size and alignment — the
+/// precondition for every cross-type cast and in-place result decode in this file.
+fn assertSameLayout(comptime Roc: type, comptime Tb: type, comptime name: []const u8) void {
+    if (@sizeOf(Roc) != @sizeOf(Tb)) @compileError(std.fmt.comptimePrint(
+        "TigerBeetle.{s}: Roc size {d} != TB size {d}",
+        .{ name, @sizeOf(Roc), @sizeOf(Tb) },
+    ));
+    if (@alignOf(Roc) != @alignOf(Tb)) @compileError(std.fmt.comptimePrint(
+        "TigerBeetle.{s}: Roc align {d} != TB align {d}",
+        .{ name, @alignOf(Roc), @alignOf(Tb) },
+    ));
+}
+
 // Wired up by host.zig at startup, before any hosted function runs.
 var g_host: ?*abi.RocHost = null;
 var g_gpa: ?std.mem.Allocator = null;
@@ -239,10 +271,9 @@ fn onCompletion(
 /// fatal — they have no per-event representation in the result list.
 ///
 /// `data` is the request body exactly as TB expects it on the wire and `out` is
-/// the caller's correctly-aligned result buffer. Today callers first marshal Roc
-/// values into TB's C layout (the `*ToTb` helpers below); once those layouts line
-/// up, a Roc list's bytes can be handed straight to `data` and only `out` needs
-/// allocating.
+/// the caller's correctly-aligned result buffer. Because the Roc and TB layouts
+/// are identical (asserted at the top of this file), `data` is now a Roc value's
+/// own bytes and `out` is a Roc list's own backing store — see `submitInto`.
 /// Bench/test hook: when true, `submit` skips the network and returns a
 /// full-length result buffer, so the marshal/decode/alloc path can be exercised
 /// without a live cluster. Filled with 0xFF so the create_* status u32 reads
@@ -292,21 +323,54 @@ fn decodeList(
     return out;
 }
 
+/// Submit `operation` carrying `data` and have TB write its results straight into
+/// a freshly allocated Roc list — no scratch buffer, no per-element copy. Sound
+/// only because `RocType` and `TbType` share an identical layout (asserted at
+/// comptime), so the bytes TB writes already *are* a valid array of `RocType`.
+///
+/// The list is allocated at `capacity` (the caller's upper bound on the count)
+/// and its length is trimmed to whatever TB actually returns. Leftover capacity
+/// past the count is harmless: `RocType` is non-refcounted, so the untouched tail
+/// is never read and is freed with the rest on decref.
+///
+/// SEAM: if a large `filter.limit` paired with a small result set is ever found
+/// to pin too much memory, this is the single place to add a conditional shrink —
+/// `allocate` an exact-size list, `@memcpy` `count` elements, decref this one.
+/// Encapsulated here so callers never change.
+fn submitInto(
+    comptime RocType: type,
+    comptime TbType: type,
+    host: *abi.RocHost,
+    operation: tb.Operation,
+    data: []const u8,
+    capacity: usize,
+) abi.RocListWith(RocType, false) {
+    comptime if (@sizeOf(RocType) != @sizeOf(TbType) or @alignOf(RocType) != @alignOf(TbType))
+        @compileError("submitInto requires identical Roc/TB layouts");
+
+    const List = abi.RocListWith(RocType, false);
+    if (capacity == 0) return List.empty();
+
+    var list = List.allocate(capacity, host);
+    const dest: [*]u8 = @ptrCast(list.elements_ptr.?);
+    const n_out = submit(operation, data, dest[0 .. capacity * @sizeOf(RocType)]);
+    list.length = n_out / @sizeOf(RocType);
+    return list;
+}
+
 // --- create_accounts! / create_transfers! ----------------------------------
 
-// The glue-generated result elements `{ timestamp, status }`. `status` is a
-// payloadless tag union whose generated type name is the concatenation of every
-// status name; we reach it via @FieldType instead of spelling it out.
-const AccountResultRecord = abi.__AnonStruct6;
-const AccountStatusTag = @FieldType(AccountResultRecord, "status");
-const TransferResultRecord = abi.__AnonStruct16;
-const TransferStatusTag = @FieldType(TransferResultRecord, "status");
+// The create_* result elements `{ timestamp, status }`. Unlike the read structs,
+// these don't share TB's C layout — Roc's `status` is a u8 tag, TB's is a u32
+// result code — so create_* still decodes element-by-element via `decodeList`.
+const AccountResultRecord = abi.TigerBeetleCreateAccountsResult;
+const TransferResultRecord = abi.TigerBeetleCreateTransfersResult;
 
 /// Hosted function: TigerBeetle.create_accounts!
 /// List(Account) => List({ status : CreateAccountStatus, timestamp : U64 })
 pub fn createAccounts(
     arg0: abi.RocListWith(abi.TigerBeetleAccount, false),
-) callconv(.c) abi.RocListWith(AccountResultRecord, false) {
+) callconv(.c) abi.RocListWith(abi.TigerBeetleCreateAccountsResult, false) {
     const host = g_host.?;
     const gpa = g_gpa.?;
 
@@ -315,7 +379,7 @@ pub fn createAccounts(
 
     const roc_accounts = owned.items();
     const n = roc_accounts.len;
-    if (n == 0) return abi.RocListWith(AccountResultRecord, false).empty();
+    if (n == 0) return abi.RocListWith(abi.TigerBeetleCreateAccountsResult, false).empty();
 
     // Dense results: one tb_create_account_result_t per submitted account.
     const results = gpa.alloc(tb.CreateAccountResult, n) catch fatal("out of memory");
@@ -329,7 +393,7 @@ pub fn createAccounts(
     const count = n_out / @sizeOf(tb.CreateAccountResult);
     return decodeList(
         tb.CreateAccountResult,
-        AccountResultRecord,
+        abi.TigerBeetleCreateAccountsResult,
         host,
         results[0..count],
         accountResultToRoc,
@@ -340,7 +404,7 @@ pub fn createAccounts(
 /// List(Transfer) => List({ status : CreateTransferStatus, timestamp : U64 })
 pub fn createTransfers(
     arg0: abi.RocListWith(abi.TigerBeetleTransfer, false),
-) callconv(.c) abi.RocListWith(TransferResultRecord, false) {
+) callconv(.c) abi.RocListWith(abi.TigerBeetleCreateTransfersResult, false) {
     const host = g_host.?;
     const gpa = g_gpa.?;
 
@@ -349,7 +413,7 @@ pub fn createTransfers(
 
     const roc_transfers = owned.items();
     const n = roc_transfers.len;
-    if (n == 0) return abi.RocListWith(TransferResultRecord, false).empty();
+    if (n == 0) return abi.RocListWith(abi.TigerBeetleCreateTransfersResult, false).empty();
 
     // Dense results: one tb_create_transfer_result_t per submitted transfer.
     const results = gpa.alloc(tb.CreateTransferResult, n) catch fatal(
@@ -363,7 +427,13 @@ pub fn createTransfers(
     );
 
     const count = n_out / @sizeOf(tb.CreateTransferResult);
-    return decodeList(tb.CreateTransferResult, TransferResultRecord, host, results[0..count], transferResultToRoc);
+    return decodeList(
+        tb.CreateTransferResult,
+        abi.TigerBeetleCreateTransfersResult,
+        host,
+        results[0..count],
+        transferResultToRoc,
+    );
 }
 
 // --- lookup_accounts! / lookup_transfers! ----------------------------------
@@ -374,22 +444,20 @@ pub fn lookupAccounts(
     arg0: abi.RocListWith(u128, false),
 ) callconv(.c) abi.RocListWith(abi.TigerBeetleAccount, false) {
     const host = g_host.?;
-    const gpa = g_gpa.?;
-
     var owned = arg0;
     defer owned.decref(host);
 
+    // Ids are already u128 in TB's wire layout and tb.Account matches
+    // TigerBeetleAccount, so both request and response are zero-copy.
     const ids = owned.items();
-    const n = ids.len;
-    if (n == 0) return abi.RocListWith(abi.TigerBeetleAccount, false).empty();
-
-    const results = gpa.alloc(tb.Account, n) catch fatal("out of memory");
-    defer gpa.free(results);
-    // Ids are u128 in the layout TB expects, so the request needs no marshaling.
-    const n_out = submit(.lookup_accounts, std.mem.sliceAsBytes(ids), std.mem.sliceAsBytes(results));
-
-    const count = n_out / @sizeOf(tb.Account);
-    return decodeList(tb.Account, abi.TigerBeetleAccount, host, results[0..count], accountToRoc);
+    return submitInto(
+        abi.TigerBeetleAccount,
+        tb.Account,
+        host,
+        .lookup_accounts,
+        std.mem.sliceAsBytes(ids),
+        ids.len,
+    );
 }
 
 /// Hosted function: TigerBeetle.lookup_transfers!
@@ -398,21 +466,18 @@ pub fn lookupTransfers(
     arg0: abi.RocListWith(u128, false),
 ) callconv(.c) abi.RocListWith(abi.TigerBeetleTransfer, false) {
     const host = g_host.?;
-    const gpa = g_gpa.?;
-
     var owned = arg0;
     defer owned.decref(host);
 
     const ids = owned.items();
-    const n = ids.len;
-    if (n == 0) return abi.RocListWith(abi.TigerBeetleTransfer, false).empty();
-
-    const results = gpa.alloc(tb.Transfer, n) catch fatal("out of memory");
-    defer gpa.free(results);
-    const n_out = submit(.lookup_transfers, std.mem.sliceAsBytes(ids), std.mem.sliceAsBytes(results));
-
-    const count = n_out / @sizeOf(tb.Transfer);
-    return decodeList(tb.Transfer, abi.TigerBeetleTransfer, host, results[0..count], transferToRoc);
+    return submitInto(
+        abi.TigerBeetleTransfer,
+        tb.Transfer,
+        host,
+        .lookup_transfers,
+        std.mem.sliceAsBytes(ids),
+        ids.len,
+    );
 }
 
 // --- get_account_transfers! / get_account_balances! ------------------------
@@ -428,32 +493,31 @@ pub fn getAccountTransfers(
     arg0: abi.TigerBeetleAccountFilter,
 ) callconv(.c) abi.RocListWith(abi.TigerBeetleTransfer, false) {
     const host = g_host.?;
-    const gpa = g_gpa.?;
-
-    const filter = accountFilterToTb(arg0);
-    const results = gpa.alloc(tb.Transfer, filter.limit) catch fatal("out of memory");
-    defer gpa.free(results);
-    const n_out = submit(.get_account_transfers, std.mem.asBytes(&filter), std.mem.sliceAsBytes(results));
-
-    const count = n_out / @sizeOf(tb.Transfer);
-    return decodeList(tb.Transfer, abi.TigerBeetleTransfer, host, results[0..count], transferToRoc);
+    // AccountFilter matches tb.AccountFilter, so pass its bytes straight through.
+    return submitInto(
+        abi.TigerBeetleTransfer,
+        tb.Transfer,
+        host,
+        .get_account_transfers,
+        std.mem.asBytes(&arg0),
+        arg0.limit,
+    );
 }
 
 /// Hosted function: TigerBeetle.get_account_balances!
 /// AccountFilter => List(AccountBalance)
 pub fn getAccountBalances(
     arg0: abi.TigerBeetleAccountFilter,
-) callconv(.c) abi.RocListWith(abi.__AnonStruct25, false) {
+) callconv(.c) abi.RocListWith(abi.TigerBeetleAccountBalance, false) {
     const host = g_host.?;
-    const gpa = g_gpa.?;
-
-    const filter = accountFilterToTb(arg0);
-    const results = gpa.alloc(tb.AccountBalance, filter.limit) catch fatal("out of memory");
-    defer gpa.free(results);
-    const n_out = submit(.get_account_balances, std.mem.asBytes(&filter), std.mem.sliceAsBytes(results));
-
-    const count = n_out / @sizeOf(tb.AccountBalance);
-    return decodeList(tb.AccountBalance, abi.__AnonStruct25, host, results[0..count], accountBalanceToRoc);
+    return submitInto(
+        abi.TigerBeetleAccountBalance,
+        tb.AccountBalance,
+        host,
+        .get_account_balances,
+        std.mem.asBytes(&arg0),
+        arg0.limit,
+    );
 }
 
 // --- query_accounts! / query_transfers! ------------------------------------
@@ -464,24 +528,14 @@ pub fn queryAccounts(
     arg0: abi.TigerBeetleQueryFilter,
 ) callconv(.c) abi.RocListWith(abi.TigerBeetleAccount, false) {
     const host = g_host.?;
-    const gpa = g_gpa.?;
-
-    const filter = queryFilterToTb(arg0);
-    const results = gpa.alloc(tb.Account, filter.limit) catch fatal("out of memory");
-    defer gpa.free(results);
-    const n_out = submit(
-        .query_accounts,
-        std.mem.asBytes(&filter),
-        std.mem.sliceAsBytes(results),
-    );
-
-    const count = n_out / @sizeOf(tb.Account);
-    return decodeList(
-        tb.Account,
+    // QueryFilter matches tb.QueryFilter, so pass its bytes straight through.
+    return submitInto(
         abi.TigerBeetleAccount,
+        tb.Account,
         host,
-        results[0..count],
-        accountToRoc,
+        .query_accounts,
+        std.mem.asBytes(&arg0),
+        arg0.limit,
     );
 }
 
@@ -491,110 +545,21 @@ pub fn queryTransfers(
     arg0: abi.TigerBeetleQueryFilter,
 ) callconv(.c) abi.RocListWith(abi.TigerBeetleTransfer, false) {
     const host = g_host.?;
-    const gpa = g_gpa.?;
-
-    const filter = queryFilterToTb(arg0);
-    const results = gpa.alloc(tb.Transfer, filter.limit) catch fatal("out of memory");
-    defer gpa.free(results);
-    const n_out = submit(
-        .query_transfers,
-        std.mem.asBytes(&filter),
-        std.mem.sliceAsBytes(results),
-    );
-
-    const count = n_out / @sizeOf(tb.Transfer);
-    return decodeList(
-        tb.Transfer,
+    return submitInto(
         abi.TigerBeetleTransfer,
+        tb.Transfer,
         host,
-        results[0..count],
-        transferToRoc,
+        .query_transfers,
+        std.mem.asBytes(&arg0),
+        arg0.limit,
     );
 }
 
-// --- Roc <-> TB marshaling -------------------------------------------------
+// --- create_* result decoding ----------------------------------------------
 //
-// Roc reorders record fields and rounds reserved regions up to 16-byte
-// multiples, so neither accounts/transfers nor the filters share TB's C layout
-// today — every field is copied explicitly. When the layouts converge these
-// collapse to a pointer cast and the request-side allocations above disappear.
-
-fn accountToRoc(src: tb.Account) abi.TigerBeetleAccount {
-    return .{
-        .id = src.id,
-        .debits_pending = src.debits_pending,
-        .debits_posted = src.debits_posted,
-        .credits_pending = src.credits_pending,
-        .credits_posted = src.credits_posted,
-        .user_data_128 = src.user_data_128,
-        .user_data_64 = src.user_data_64,
-        .user_data_32 = src.user_data_32,
-        .reserved = .{ .bytes = 0 },
-        .ledger = src.ledger,
-        .code = src.code,
-        .flags = src.flags,
-        .timestamp = src.timestamp,
-    };
-}
-
-fn transferToRoc(src: tb.Transfer) abi.TigerBeetleTransfer {
-    return .{
-        .id = src.id,
-        .debit_account_id = src.debit_account_id,
-        .credit_account_id = src.credit_account_id,
-        .amount = src.amount,
-        .pending_id = src.pending_id,
-        .user_data_128 = src.user_data_128,
-        .user_data_64 = src.user_data_64,
-        .user_data_32 = src.user_data_32,
-        .timeout = src.timeout,
-        .ledger = src.ledger,
-        .code = src.code,
-        .flags = src.flags,
-        .timestamp = src.timestamp,
-    };
-}
-
-fn accountFilterToTb(src: abi.TigerBeetleAccountFilter) tb.AccountFilter {
-    return .{
-        .account_id = src.account_id,
-        .user_data_128 = src.user_data_128,
-        .user_data_64 = src.user_data_64,
-        .user_data_32 = src.user_data_32,
-        .code = src.code,
-        .reserved = [_]u8{0} ** 58,
-        .timestamp_min = src.timestamp_min,
-        .timestamp_max = src.timestamp_max,
-        .limit = src.limit,
-        .flags = src.flags,
-    };
-}
-
-fn queryFilterToTb(src: abi.TigerBeetleQueryFilter) tb.QueryFilter {
-    return .{
-        .user_data_128 = src.user_data_128,
-        .user_data_64 = src.user_data_64,
-        .user_data_32 = src.user_data_32,
-        .ledger = src.ledger,
-        .code = src.code,
-        .reserved = [_]u8{0} ** 6,
-        .timestamp_min = src.timestamp_min,
-        .timestamp_max = src.timestamp_max,
-        .limit = src.limit,
-        .flags = src.flags,
-    };
-}
-
-fn accountBalanceToRoc(src: tb.AccountBalance) abi.__AnonStruct25 {
-    return .{
-        .debits_pending = src.debits_pending,
-        .debits_posted = src.debits_posted,
-        .credits_pending = src.credits_pending,
-        .credits_posted = src.credits_posted,
-        .reserved = std.mem.zeroes(abi.TigerBeetleReserved56),
-        .timestamp = src.timestamp,
-    };
-}
+// Every request and read response now shares TB's C layout and flows through
+// `submitInto` with zero marshaling. Only the create_* responses still need
+// per-element conversion: TB's u32 `status` result code maps to a Roc u8 tag.
 
 fn accountResultToRoc(src: tb.CreateAccountResult) AccountResultRecord {
     return .{ .timestamp = src.timestamp, .status = accountStatusToRoc(src.status) };
@@ -606,7 +571,7 @@ fn transferResultToRoc(src: tb.CreateTransferResult) TransferResultRecord {
 
 /// Map a TB account status code to the Roc `CreateAccountStatus` tag. Names line
 /// up 1:1 except TB's `user_data_NNN` vs Roc's `user_dataNNN`.
-fn accountStatusToRoc(status: tb.CreateAccountStatus) AccountStatusTag {
+fn accountStatusToRoc(status: tb.CreateAccountStatus) abi.TigerBeetleCreateAccountStatus {
     return switch (status) {
         .created => .created,
         .linked_event_failed => .linked_event_failed,
@@ -641,7 +606,7 @@ fn accountStatusToRoc(status: tb.CreateAccountStatus) AccountStatusTag {
 
 /// Map a TB transfer status code to the Roc `CreateTransferStatus` tag. Names
 /// line up 1:1 except TB's `user_data_NNN` vs Roc's `user_dataNNN`.
-fn transferStatusToRoc(status: tb.CreateTransferStatus) TransferStatusTag {
+fn transferStatusToRoc(status: tb.CreateTransferStatus) abi.TigerBeetleCreateTransferStatus {
     return switch (status) {
         .created => .created,
         .linked_event_failed => .linked_event_failed,

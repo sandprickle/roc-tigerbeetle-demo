@@ -210,7 +210,38 @@ TigerBeetle := [].{
 		user_data_64 : U64,
 		user_data_32 : U32,
 		code : U16,
-		_reserved : (U128, U128, U128, U64, U16), # 58 bytes
+		# 58 bytes
+		_reserved : (
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+			U16,
+		),
 		timestamp_min : U64,
 		timestamp_max : U64,
 		limit : U32,
@@ -288,7 +319,7 @@ TigerBeetle := [].{
 		credits_pending : U128,
 		credits_posted : U128,
 		timestamp : U64,
-		reserved : (U128, U128, U128, U64), # 56 bytes
+		_reserved : (U64, U64, U64, U64, U64, U64, U64), # 56 bytes
 	}
 
 	# `tb_query_filter_t` — selects accounts/transfers by their secondary indexes
@@ -299,7 +330,7 @@ TigerBeetle := [].{
 		user_data_32 : U32,
 		ledger : U32,
 		code : U16,
-		_reserved : (U32, U16), # 6 bytes
+		_reserved : (U16, U16, U16), # 6 bytes
 		timestamp_min : U64,
 		timestamp_max : U64,
 		limit : U32,
@@ -373,7 +404,7 @@ TigerBeetle := [].{
 		}
 	}
 
-	CreateAccountStatus : [
+	CreateAccountStatus := [
 		Created,
 		LinkedEventFailed,
 		LinkedEventChainOpen,
@@ -403,7 +434,7 @@ TigerBeetle := [].{
 		ImportedEventTimestampMustNotRegress,
 	]
 
-	CreateTransferStatus : [
+	CreateTransferStatus := [
 		Created,
 		LinkedEventFailed,
 		LinkedEventChainOpen,
@@ -474,13 +505,13 @@ TigerBeetle := [].{
 		IdAlreadyFailed,
 	]
 
-	CreateAccountsResult : {
+	CreateAccountsResult := {
 		timestamp : U64,
 		status : CreateAccountStatus,
 	}
 	create_accounts! : List(Account) => List(CreateAccountsResult)
 
-	CreateTransfersResult : {
+	CreateTransfersResult := {
 		timestamp : U64,
 		status : CreateTransferStatus,
 	}

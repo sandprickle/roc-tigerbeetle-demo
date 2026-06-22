@@ -54,3 +54,5 @@ build-output/
 
 *.tigerbeetle
 tigerbeetle
+
+bench/**/*_bench
