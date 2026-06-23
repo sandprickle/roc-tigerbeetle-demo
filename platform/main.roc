@@ -21,7 +21,6 @@ platform ""
 		"roc_tb_id": TigerBeetle.id!,
 	}
 	targets: {
-		inputs: "targets/",
 		x64mac: { inputs: ["libhost.a", app] },
 		arm64mac: { inputs: ["libhost.a", "libtb_client.a", app] },
 		x64musl: { inputs: ["crt1.o", "libhost.a", "libtb_client.a", app, "libc.a"] },
