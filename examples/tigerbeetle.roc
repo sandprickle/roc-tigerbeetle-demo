@@ -27,7 +27,7 @@ demo! : Tb.Client => {}
 demo! = |client| {
 	# Two valid accounts plus one invalid (id 0) to show both result paths.
 	accounts = [
-		Account.init({ id: Tb.id!(), ledger: 700 }).code(10).flags(Tb.AccountFlags.history),
+		Account.init({ id: Tb.id!(), ledger: 700 }).code(10),
 		Account.init({ id: Tb.id!(), ledger: 700 }).code(10),
 		Account.init({ id: 0, ledger: 700 }).code(10),
 	]
