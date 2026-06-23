@@ -554,16 +554,17 @@ pub const RocEnv = struct {
     roc_io: RocIo,
 };
 
-/// Element type for TigerBeetle.CreateAccountsResult
-pub const TigerBeetleCreateAccountsResult = extern struct {
+/// Element type for TigerBeetle.CreateAccountResult
+pub const TigerBeetleCreateAccountResult = extern struct {
     timestamp: u64,
-    status: TigerBeetleCreateAccountStatus,
+    status: u32,
+    _pad0: [4]u8,
 };
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(TigerBeetleCreateAccountsResult) != 16) @compileError("TigerBeetleCreateAccountsResult size mismatch");
-        if (@alignOf(TigerBeetleCreateAccountsResult) != 8) @compileError("TigerBeetleCreateAccountsResult alignment mismatch");
+        if (@sizeOf(TigerBeetleCreateAccountResult) != 16) @compileError("TigerBeetleCreateAccountResult size mismatch");
+        if (@alignOf(TigerBeetleCreateAccountResult) != 8) @compileError("TigerBeetleCreateAccountResult alignment mismatch");
     }
 }
 
@@ -591,16 +592,17 @@ comptime {
     }
 }
 
-/// Element type for TigerBeetle.CreateTransfersResult
-pub const TigerBeetleCreateTransfersResult = extern struct {
+/// Element type for TigerBeetle.CreateTransferResult
+pub const TigerBeetleCreateTransferResult = extern struct {
     timestamp: u64,
-    status: TigerBeetleCreateTransferStatus,
+    status: u32,
+    _pad0: [4]u8,
 };
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(TigerBeetleCreateTransfersResult) != 16) @compileError("TigerBeetleCreateTransfersResult size mismatch");
-        if (@alignOf(TigerBeetleCreateTransfersResult) != 8) @compileError("TigerBeetleCreateTransfersResult alignment mismatch");
+        if (@sizeOf(TigerBeetleCreateTransferResult) != 16) @compileError("TigerBeetleCreateTransferResult size mismatch");
+        if (@alignOf(TigerBeetleCreateTransferResult) != 8) @compileError("TigerBeetleCreateTransferResult alignment mismatch");
     }
 }
 
@@ -649,8 +651,8 @@ comptime {
     }
 }
 
-/// Element type for __AnonStruct21
-pub const __AnonStruct21 = extern struct {
+/// Element type for __AnonStruct20
+pub const __AnonStruct20 = extern struct {
     _0: u16,
     _1: u16,
     _10: u16,
@@ -684,8 +686,8 @@ pub const __AnonStruct21 = extern struct {
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(__AnonStruct21) != 58) @compileError("__AnonStruct21 size mismatch");
-        if (@alignOf(__AnonStruct21) != 2) @compileError("__AnonStruct21 alignment mismatch");
+        if (@sizeOf(__AnonStruct20) != 58) @compileError("__AnonStruct20 size mismatch");
+        if (@alignOf(__AnonStruct20) != 2) @compileError("__AnonStruct20 alignment mismatch");
     }
 }
 
@@ -706,8 +708,8 @@ comptime {
     }
 }
 
-/// Element type for __AnonStruct24
-pub const __AnonStruct24 = extern struct {
+/// Element type for __AnonStruct23
+pub const __AnonStruct23 = extern struct {
     _0: u64,
     _1: u64,
     _2: u64,
@@ -719,8 +721,8 @@ pub const __AnonStruct24 = extern struct {
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(__AnonStruct24) != 56) @compileError("__AnonStruct24 size mismatch");
-        if (@alignOf(__AnonStruct24) != 8) @compileError("__AnonStruct24 alignment mismatch");
+        if (@sizeOf(__AnonStruct23) != 56) @compileError("__AnonStruct23 size mismatch");
+        if (@alignOf(__AnonStruct23) != 8) @compileError("__AnonStruct23 alignment mismatch");
     }
 }
 
@@ -745,8 +747,8 @@ comptime {
     }
 }
 
-/// Element type for __AnonStruct26
-pub const __AnonStruct26 = extern struct {
+/// Element type for __AnonStruct25
+pub const __AnonStruct25 = extern struct {
     _0: u16,
     _1: u16,
     _2: u16,
@@ -754,113 +756,23 @@ pub const __AnonStruct26 = extern struct {
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(__AnonStruct26) != 6) @compileError("__AnonStruct26 size mismatch");
-        if (@alignOf(__AnonStruct26) != 2) @compileError("__AnonStruct26 alignment mismatch");
+        if (@sizeOf(__AnonStruct25) != 6) @compileError("__AnonStruct25 size mismatch");
+        if (@alignOf(__AnonStruct25) != 2) @compileError("__AnonStruct25 alignment mismatch");
     }
 }
 
-/// Tag union: TigerBeetle.CreateAccountStatus
-pub const TigerBeetleCreateAccountStatus = enum(u8) {
-    code_must_not_be_zero = 0,
-    created = 1,
-    credits_pending_must_be_zero = 2,
-    credits_posted_must_be_zero = 3,
-    debits_pending_must_be_zero = 4,
-    debits_posted_must_be_zero = 5,
-    exists = 6,
-    exists_with_different_code = 7,
-    exists_with_different_flags = 8,
-    exists_with_different_ledger = 9,
-    exists_with_different_user_data128 = 10,
-    exists_with_different_user_data32 = 11,
-    exists_with_different_user_data64 = 12,
-    flags_are_mutually_exclusive = 13,
-    id_must_not_be_int_max = 14,
-    id_must_not_be_zero = 15,
-    imported_event_expected = 16,
-    imported_event_not_expected = 17,
-    imported_event_timestamp_must_not_advance = 18,
-    imported_event_timestamp_must_not_regress = 19,
-    imported_event_timestamp_out_of_range = 20,
-    ledger_must_not_be_zero = 21,
-    linked_event_chain_open = 22,
-    linked_event_failed = 23,
-    reserved_field = 24,
-    reserved_flag = 25,
-    timestamp_must_be_zero = 26,
+/// Element type for __AnonStruct28
+pub const __AnonStruct28 = extern struct {
+    cluster_id: u128,
+    addresses: RocStr,
 };
 
-/// Tag union: TigerBeetle.CreateTransferStatus
-pub const TigerBeetleCreateTransferStatus = enum(u8) {
-    accounts_must_be_different = 0,
-    accounts_must_have_the_same_ledger = 1,
-    closing_transfer_must_be_pending = 2,
-    code_must_not_be_zero = 3,
-    created = 4,
-    credit_account_already_closed = 5,
-    credit_account_id_must_not_be_int_max = 6,
-    credit_account_id_must_not_be_zero = 7,
-    credit_account_not_found = 8,
-    debit_account_already_closed = 9,
-    debit_account_id_must_not_be_int_max = 10,
-    debit_account_id_must_not_be_zero = 11,
-    debit_account_not_found = 12,
-    exceeds_credits = 13,
-    exceeds_debits = 14,
-    exceeds_pending_transfer_amount = 15,
-    exists = 16,
-    exists_with_different_amount = 17,
-    exists_with_different_code = 18,
-    exists_with_different_credit_account_id = 19,
-    exists_with_different_debit_account_id = 20,
-    exists_with_different_flags = 21,
-    exists_with_different_ledger = 22,
-    exists_with_different_pending_id = 23,
-    exists_with_different_timeout = 24,
-    exists_with_different_user_data128 = 25,
-    exists_with_different_user_data32 = 26,
-    exists_with_different_user_data64 = 27,
-    flags_are_mutually_exclusive = 28,
-    id_already_failed = 29,
-    id_must_not_be_int_max = 30,
-    id_must_not_be_zero = 31,
-    imported_event_expected = 32,
-    imported_event_not_expected = 33,
-    imported_event_timeout_must_be_zero = 34,
-    imported_event_timestamp_must_not_advance = 35,
-    imported_event_timestamp_must_not_regress = 36,
-    imported_event_timestamp_must_postdate_credit_account = 37,
-    imported_event_timestamp_must_postdate_debit_account = 38,
-    imported_event_timestamp_out_of_range = 39,
-    ledger_must_not_be_zero = 40,
-    linked_event_chain_open = 41,
-    linked_event_failed = 42,
-    overflows_credits = 43,
-    overflows_credits_pending = 44,
-    overflows_credits_posted = 45,
-    overflows_debits = 46,
-    overflows_debits_pending = 47,
-    overflows_debits_posted = 48,
-    overflows_timeout = 49,
-    pending_id_must_be_different = 50,
-    pending_id_must_be_zero = 51,
-    pending_id_must_not_be_int_max = 52,
-    pending_id_must_not_be_zero = 53,
-    pending_transfer_already_posted = 54,
-    pending_transfer_already_voided = 55,
-    pending_transfer_expired = 56,
-    pending_transfer_has_different_amount = 57,
-    pending_transfer_has_different_code = 58,
-    pending_transfer_has_different_credit_account_id = 59,
-    pending_transfer_has_different_debit_account_id = 60,
-    pending_transfer_has_different_ledger = 61,
-    pending_transfer_not_found = 62,
-    pending_transfer_not_pending = 63,
-    reserved_flag = 64,
-    timeout_reserved_for_pending_transfer = 65,
-    timestamp_must_be_zero = 66,
-    transfer_must_have_the_same_ledger_as_accounts = 67,
-};
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(__AnonStruct28) != 48) @compileError("__AnonStruct28 size mismatch");
+        if (@alignOf(__AnonStruct28) != 16) @compileError("__AnonStruct28 alignment mismatch");
+    }
+}
 
 /// Tag discriminant for Try.
 pub const TryTag = enum(u8) {
@@ -871,7 +783,7 @@ pub const TryTag = enum(u8) {
 /// Tag union: Try
 pub const Try = extern struct {
     payload: extern union {
-        err: i32,
+        err: TigerBeetleClientInitErr,
         ok: void,
     },
     tag: TryTag,
@@ -879,10 +791,20 @@ pub const Try = extern struct {
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(Try) != 8) @compileError("Try size mismatch");
-        if (@alignOf(Try) != 4) @compileError("Try alignment mismatch");
+        if (@sizeOf(Try) != 2) @compileError("Try size mismatch");
+        if (@alignOf(Try) != 1) @compileError("Try alignment mismatch");
     }
 }
+
+/// Tag union: TigerBeetle.Client.InitErr
+pub const TigerBeetleClientInitErr = enum(u8) {
+    address_invalid = 0,
+    address_limit_exceeded = 1,
+    network_subsystem = 2,
+    out_of_memory = 3,
+    system_resources = 4,
+    unexpected = 5,
+};
 
 /// Arguments for Stderr.line!
 /// Roc signature: Str => {}
@@ -898,206 +820,99 @@ pub const StdoutLineArgs = extern struct {
     arg0: RocStr,
 };
 
-/// Arguments for TigerBeetle.create_accounts!
-/// Roc signature: List(TigerBeetle.Account) => List(TigerBeetle.CreateAccountsResult)
+/// Arguments for TigerBeetle.Client.create_accounts!
+/// Roc signature: TigerBeetle.Client, List(TigerBeetle.Account) => List(TigerBeetle.CreateAccountResult)
 /// Refcounted fields are owned by the hosted function.
-pub const TigerBeetleCreate_accountsArgs = extern struct {
-    arg0: RocListWith(TigerBeetleAccount, false),
+pub const TigerBeetleClientCreate_accountsArgs = extern struct {
+    arg0: void,
+    arg1: RocListWith(TigerBeetleAccount, false),
 };
 
-/// Arguments for TigerBeetle.create_transfers!
-/// Roc signature: List(TigerBeetle.Transfer) => List(TigerBeetle.CreateTransfersResult)
+/// Arguments for TigerBeetle.Client.create_transfers!
+/// Roc signature: TigerBeetle.Client, List(TigerBeetle.Transfer) => List(TigerBeetle.CreateTransferResult)
 /// Refcounted fields are owned by the hosted function.
-pub const TigerBeetleCreate_transfersArgs = extern struct {
-    arg0: RocListWith(TigerBeetleTransfer, false),
+pub const TigerBeetleClientCreate_transfersArgs = extern struct {
+    arg0: void,
+    arg1: RocListWith(TigerBeetleTransfer, false),
 };
 
-/// Arguments for TigerBeetle.get_account_balances!
-/// Roc signature: TigerBeetle.AccountFilter => List(TigerBeetle.AccountBalance)
+/// Arguments for TigerBeetle.Client.get_account_balances!
+/// Roc signature: TigerBeetle.Client, TigerBeetle.AccountFilter => List(TigerBeetle.AccountBalance)
 /// Refcounted fields are owned by the hosted function.
-pub const TigerBeetleGet_account_balancesArgs = extern struct {
-    account_id: u128,
-    user_data_128: u128,
-    user_data_64: u64,
-    user_data_32: u32,
-    code: u16,
-    _pad0: [58]u8,
-    timestamp_min: u64,
-    timestamp_max: u64,
-    limit: u32,
-    flags: u32,
+pub const TigerBeetleClientGet_account_balancesArgs = extern struct {
+    arg0: void,
+    arg1: TigerBeetleAccountFilter,
 };
 
-comptime {
-    if (@sizeOf(usize) == 8) {
-        if (@sizeOf(TigerBeetleGet_account_balancesArgs) != 128) @compileError("TigerBeetleGet_account_balancesArgs size mismatch");
-        if (@alignOf(TigerBeetleGet_account_balancesArgs) != 16) @compileError("TigerBeetleGet_account_balancesArgs alignment mismatch");
-    }
-}
-
-/// Arguments for TigerBeetle.get_account_transfers!
-/// Roc signature: TigerBeetle.AccountFilter => List(TigerBeetle.Transfer)
+/// Arguments for TigerBeetle.Client.get_account_transfers!
+/// Roc signature: TigerBeetle.Client, TigerBeetle.AccountFilter => List(TigerBeetle.Transfer)
 /// Refcounted fields are owned by the hosted function.
-pub const TigerBeetleGet_account_transfersArgs = extern struct {
-    account_id: u128,
-    user_data_128: u128,
-    user_data_64: u64,
-    user_data_32: u32,
-    code: u16,
-    _pad0: [58]u8,
-    timestamp_min: u64,
-    timestamp_max: u64,
-    limit: u32,
-    flags: u32,
+pub const TigerBeetleClientGet_account_transfersArgs = extern struct {
+    arg0: void,
+    arg1: TigerBeetleAccountFilter,
+};
+
+/// Arguments for TigerBeetle.Client.init!
+/// Roc signature: { addresses : Str, cluster_id : U128 } => Try(TigerBeetle.Client, TigerBeetle.Client.InitErr)
+/// Refcounted fields are owned by the hosted function.
+pub const TigerBeetleClientInitArgs = extern struct {
+    cluster_id: u128,
+    addresses: RocStr,
 };
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(TigerBeetleGet_account_transfersArgs) != 128) @compileError("TigerBeetleGet_account_transfersArgs size mismatch");
-        if (@alignOf(TigerBeetleGet_account_transfersArgs) != 16) @compileError("TigerBeetleGet_account_transfersArgs alignment mismatch");
+        if (@sizeOf(TigerBeetleClientInitArgs) != 48) @compileError("TigerBeetleClientInitArgs size mismatch");
+        if (@alignOf(TigerBeetleClientInitArgs) != 16) @compileError("TigerBeetleClientInitArgs alignment mismatch");
     }
 }
 
-/// Arguments for TigerBeetle.lookup_accounts!
-/// Roc signature: List(U128) => List(TigerBeetle.Account)
+/// Arguments for TigerBeetle.Client.lookup_accounts!
+/// Roc signature: TigerBeetle.Client, List(U128) => List(TigerBeetle.Account)
 /// Refcounted fields are owned by the hosted function.
-pub const TigerBeetleLookup_accountsArgs = extern struct {
-    arg0: RocListWith(u128, false),
+pub const TigerBeetleClientLookup_accountsArgs = extern struct {
+    arg0: void,
+    arg1: RocListWith(u128, false),
 };
 
-/// Arguments for TigerBeetle.lookup_transfers!
-/// Roc signature: List(U128) => List(TigerBeetle.Transfer)
+/// Arguments for TigerBeetle.Client.lookup_transfers!
+/// Roc signature: TigerBeetle.Client, List(U128) => List(TigerBeetle.Transfer)
 /// Refcounted fields are owned by the hosted function.
-pub const TigerBeetleLookup_transfersArgs = extern struct {
-    arg0: RocListWith(u128, false),
+pub const TigerBeetleClientLookup_transfersArgs = extern struct {
+    arg0: void,
+    arg1: RocListWith(u128, false),
 };
 
-/// Arguments for TigerBeetle.query_accounts!
-/// Roc signature: TigerBeetle.QueryFilter => List(TigerBeetle.Account)
+/// Arguments for TigerBeetle.Client.query_accounts!
+/// Roc signature: TigerBeetle.Client, TigerBeetle.QueryFilter => List(TigerBeetle.Account)
 /// Refcounted fields are owned by the hosted function.
-pub const TigerBeetleQuery_accountsArgs = extern struct {
-    user_data_128: u128,
-    user_data_64: u64,
-    user_data_32: u32,
-    ledger: u32,
-    code: u16,
-    _pad0: [6]u8,
-    timestamp_min: u64,
-    timestamp_max: u64,
-    limit: u32,
-    flags: u32,
+pub const TigerBeetleClientQuery_accountsArgs = extern struct {
+    arg0: void,
+    arg1: TigerBeetleQueryFilter,
 };
 
-comptime {
-    if (@sizeOf(usize) == 8) {
-        if (@sizeOf(TigerBeetleQuery_accountsArgs) != 64) @compileError("TigerBeetleQuery_accountsArgs size mismatch");
-        if (@alignOf(TigerBeetleQuery_accountsArgs) != 16) @compileError("TigerBeetleQuery_accountsArgs alignment mismatch");
-    }
-}
-
-/// Arguments for TigerBeetle.query_transfers!
-/// Roc signature: TigerBeetle.QueryFilter => List(TigerBeetle.Transfer)
+/// Arguments for TigerBeetle.Client.query_transfers!
+/// Roc signature: TigerBeetle.Client, TigerBeetle.QueryFilter => List(TigerBeetle.Transfer)
 /// Refcounted fields are owned by the hosted function.
-pub const TigerBeetleQuery_transfersArgs = extern struct {
-    user_data_128: u128,
-    user_data_64: u64,
-    user_data_32: u32,
-    ledger: u32,
-    code: u16,
-    _pad0: [6]u8,
-    timestamp_min: u64,
-    timestamp_max: u64,
-    limit: u32,
-    flags: u32,
+pub const TigerBeetleClientQuery_transfersArgs = extern struct {
+    arg0: void,
+    arg1: TigerBeetleQueryFilter,
 };
-
-comptime {
-    if (@sizeOf(usize) == 8) {
-        if (@sizeOf(TigerBeetleQuery_transfersArgs) != 64) @compileError("TigerBeetleQuery_transfersArgs size mismatch");
-        if (@alignOf(TigerBeetleQuery_transfersArgs) != 16) @compileError("TigerBeetleQuery_transfersArgs alignment mismatch");
-    }
-}
 
 // =============================================================================
 // Generated Refcount Helpers
 // =============================================================================
 
-/// Recursively decrement Roc-owned fields in TigerBeetleCreateAccountsResult.
-pub fn decrefTigerBeetleCreateAccountsResult(value: TigerBeetleCreateAccountsResult, roc_host: *RocHost) void {
-    decrefTigerBeetleCreateAccountStatus(value.status, roc_host);
-}
-
-/// Increment Roc-owned fields in TigerBeetleCreateAccountsResult.
-pub fn increfTigerBeetleCreateAccountsResult(value: TigerBeetleCreateAccountsResult, amount: isize) void {
-    increfTigerBeetleCreateAccountStatus(value.status, amount);
-}
-
-/// Recursively decrement Roc-owned payloads in TigerBeetleCreateAccountStatus.
-pub fn decrefTigerBeetleCreateAccountStatus(value: TigerBeetleCreateAccountStatus, roc_host: *RocHost) void {
+/// Recursively decrement Roc-owned fields in TigerBeetleCreateAccountResult.
+pub fn decrefTigerBeetleCreateAccountResult(value: TigerBeetleCreateAccountResult, roc_host: *RocHost) void {
+    _ = value;
     _ = roc_host;
-    switch (value.tag) {
-        .CodeMustNotBeZero => {},
-        .Created => {},
-        .CreditsPendingMustBeZero => {},
-        .CreditsPostedMustBeZero => {},
-        .DebitsPendingMustBeZero => {},
-        .DebitsPostedMustBeZero => {},
-        .Exists => {},
-        .ExistsWithDifferentCode => {},
-        .ExistsWithDifferentFlags => {},
-        .ExistsWithDifferentLedger => {},
-        .ExistsWithDifferentUserData128 => {},
-        .ExistsWithDifferentUserData32 => {},
-        .ExistsWithDifferentUserData64 => {},
-        .FlagsAreMutuallyExclusive => {},
-        .IdMustNotBeIntMax => {},
-        .IdMustNotBeZero => {},
-        .ImportedEventExpected => {},
-        .ImportedEventNotExpected => {},
-        .ImportedEventTimestampMustNotAdvance => {},
-        .ImportedEventTimestampMustNotRegress => {},
-        .ImportedEventTimestampOutOfRange => {},
-        .LedgerMustNotBeZero => {},
-        .LinkedEventChainOpen => {},
-        .LinkedEventFailed => {},
-        .ReservedField => {},
-        .ReservedFlag => {},
-        .TimestampMustBeZero => {},
-    }
 }
 
-/// Increment Roc-owned payloads in TigerBeetleCreateAccountStatus.
-pub fn increfTigerBeetleCreateAccountStatus(value: TigerBeetleCreateAccountStatus, amount: isize) void {
+/// Increment Roc-owned fields in TigerBeetleCreateAccountResult.
+pub fn increfTigerBeetleCreateAccountResult(value: TigerBeetleCreateAccountResult, amount: isize) void {
+    _ = value;
     _ = amount;
-    switch (value.tag) {
-        .CodeMustNotBeZero => {},
-        .Created => {},
-        .CreditsPendingMustBeZero => {},
-        .CreditsPostedMustBeZero => {},
-        .DebitsPendingMustBeZero => {},
-        .DebitsPostedMustBeZero => {},
-        .Exists => {},
-        .ExistsWithDifferentCode => {},
-        .ExistsWithDifferentFlags => {},
-        .ExistsWithDifferentLedger => {},
-        .ExistsWithDifferentUserData128 => {},
-        .ExistsWithDifferentUserData32 => {},
-        .ExistsWithDifferentUserData64 => {},
-        .FlagsAreMutuallyExclusive => {},
-        .IdMustNotBeIntMax => {},
-        .IdMustNotBeZero => {},
-        .ImportedEventExpected => {},
-        .ImportedEventNotExpected => {},
-        .ImportedEventTimestampMustNotAdvance => {},
-        .ImportedEventTimestampMustNotRegress => {},
-        .ImportedEventTimestampOutOfRange => {},
-        .LedgerMustNotBeZero => {},
-        .LinkedEventChainOpen => {},
-        .LinkedEventFailed => {},
-        .ReservedField => {},
-        .ReservedFlag => {},
-        .TimestampMustBeZero => {},
-    }
 }
 
 /// Recursively decrement Roc-owned fields in TigerBeetleAccount.
@@ -1112,164 +927,16 @@ pub fn increfTigerBeetleAccount(value: TigerBeetleAccount, amount: isize) void {
     _ = amount;
 }
 
-/// Recursively decrement Roc-owned fields in TigerBeetleCreateTransfersResult.
-pub fn decrefTigerBeetleCreateTransfersResult(value: TigerBeetleCreateTransfersResult, roc_host: *RocHost) void {
-    decrefTigerBeetleCreateTransferStatus(value.status, roc_host);
-}
-
-/// Increment Roc-owned fields in TigerBeetleCreateTransfersResult.
-pub fn increfTigerBeetleCreateTransfersResult(value: TigerBeetleCreateTransfersResult, amount: isize) void {
-    increfTigerBeetleCreateTransferStatus(value.status, amount);
-}
-
-/// Recursively decrement Roc-owned payloads in TigerBeetleCreateTransferStatus.
-pub fn decrefTigerBeetleCreateTransferStatus(value: TigerBeetleCreateTransferStatus, roc_host: *RocHost) void {
+/// Recursively decrement Roc-owned fields in TigerBeetleCreateTransferResult.
+pub fn decrefTigerBeetleCreateTransferResult(value: TigerBeetleCreateTransferResult, roc_host: *RocHost) void {
+    _ = value;
     _ = roc_host;
-    switch (value.tag) {
-        .AccountsMustBeDifferent => {},
-        .AccountsMustHaveTheSameLedger => {},
-        .ClosingTransferMustBePending => {},
-        .CodeMustNotBeZero => {},
-        .Created => {},
-        .CreditAccountAlreadyClosed => {},
-        .CreditAccountIdMustNotBeIntMax => {},
-        .CreditAccountIdMustNotBeZero => {},
-        .CreditAccountNotFound => {},
-        .DebitAccountAlreadyClosed => {},
-        .DebitAccountIdMustNotBeIntMax => {},
-        .DebitAccountIdMustNotBeZero => {},
-        .DebitAccountNotFound => {},
-        .ExceedsCredits => {},
-        .ExceedsDebits => {},
-        .ExceedsPendingTransferAmount => {},
-        .Exists => {},
-        .ExistsWithDifferentAmount => {},
-        .ExistsWithDifferentCode => {},
-        .ExistsWithDifferentCreditAccountId => {},
-        .ExistsWithDifferentDebitAccountId => {},
-        .ExistsWithDifferentFlags => {},
-        .ExistsWithDifferentLedger => {},
-        .ExistsWithDifferentPendingId => {},
-        .ExistsWithDifferentTimeout => {},
-        .ExistsWithDifferentUserData128 => {},
-        .ExistsWithDifferentUserData32 => {},
-        .ExistsWithDifferentUserData64 => {},
-        .FlagsAreMutuallyExclusive => {},
-        .IdAlreadyFailed => {},
-        .IdMustNotBeIntMax => {},
-        .IdMustNotBeZero => {},
-        .ImportedEventExpected => {},
-        .ImportedEventNotExpected => {},
-        .ImportedEventTimeoutMustBeZero => {},
-        .ImportedEventTimestampMustNotAdvance => {},
-        .ImportedEventTimestampMustNotRegress => {},
-        .ImportedEventTimestampMustPostdateCreditAccount => {},
-        .ImportedEventTimestampMustPostdateDebitAccount => {},
-        .ImportedEventTimestampOutOfRange => {},
-        .LedgerMustNotBeZero => {},
-        .LinkedEventChainOpen => {},
-        .LinkedEventFailed => {},
-        .OverflowsCredits => {},
-        .OverflowsCreditsPending => {},
-        .OverflowsCreditsPosted => {},
-        .OverflowsDebits => {},
-        .OverflowsDebitsPending => {},
-        .OverflowsDebitsPosted => {},
-        .OverflowsTimeout => {},
-        .PendingIdMustBeDifferent => {},
-        .PendingIdMustBeZero => {},
-        .PendingIdMustNotBeIntMax => {},
-        .PendingIdMustNotBeZero => {},
-        .PendingTransferAlreadyPosted => {},
-        .PendingTransferAlreadyVoided => {},
-        .PendingTransferExpired => {},
-        .PendingTransferHasDifferentAmount => {},
-        .PendingTransferHasDifferentCode => {},
-        .PendingTransferHasDifferentCreditAccountId => {},
-        .PendingTransferHasDifferentDebitAccountId => {},
-        .PendingTransferHasDifferentLedger => {},
-        .PendingTransferNotFound => {},
-        .PendingTransferNotPending => {},
-        .ReservedFlag => {},
-        .TimeoutReservedForPendingTransfer => {},
-        .TimestampMustBeZero => {},
-        .TransferMustHaveTheSameLedgerAsAccounts => {},
-    }
 }
 
-/// Increment Roc-owned payloads in TigerBeetleCreateTransferStatus.
-pub fn increfTigerBeetleCreateTransferStatus(value: TigerBeetleCreateTransferStatus, amount: isize) void {
+/// Increment Roc-owned fields in TigerBeetleCreateTransferResult.
+pub fn increfTigerBeetleCreateTransferResult(value: TigerBeetleCreateTransferResult, amount: isize) void {
+    _ = value;
     _ = amount;
-    switch (value.tag) {
-        .AccountsMustBeDifferent => {},
-        .AccountsMustHaveTheSameLedger => {},
-        .ClosingTransferMustBePending => {},
-        .CodeMustNotBeZero => {},
-        .Created => {},
-        .CreditAccountAlreadyClosed => {},
-        .CreditAccountIdMustNotBeIntMax => {},
-        .CreditAccountIdMustNotBeZero => {},
-        .CreditAccountNotFound => {},
-        .DebitAccountAlreadyClosed => {},
-        .DebitAccountIdMustNotBeIntMax => {},
-        .DebitAccountIdMustNotBeZero => {},
-        .DebitAccountNotFound => {},
-        .ExceedsCredits => {},
-        .ExceedsDebits => {},
-        .ExceedsPendingTransferAmount => {},
-        .Exists => {},
-        .ExistsWithDifferentAmount => {},
-        .ExistsWithDifferentCode => {},
-        .ExistsWithDifferentCreditAccountId => {},
-        .ExistsWithDifferentDebitAccountId => {},
-        .ExistsWithDifferentFlags => {},
-        .ExistsWithDifferentLedger => {},
-        .ExistsWithDifferentPendingId => {},
-        .ExistsWithDifferentTimeout => {},
-        .ExistsWithDifferentUserData128 => {},
-        .ExistsWithDifferentUserData32 => {},
-        .ExistsWithDifferentUserData64 => {},
-        .FlagsAreMutuallyExclusive => {},
-        .IdAlreadyFailed => {},
-        .IdMustNotBeIntMax => {},
-        .IdMustNotBeZero => {},
-        .ImportedEventExpected => {},
-        .ImportedEventNotExpected => {},
-        .ImportedEventTimeoutMustBeZero => {},
-        .ImportedEventTimestampMustNotAdvance => {},
-        .ImportedEventTimestampMustNotRegress => {},
-        .ImportedEventTimestampMustPostdateCreditAccount => {},
-        .ImportedEventTimestampMustPostdateDebitAccount => {},
-        .ImportedEventTimestampOutOfRange => {},
-        .LedgerMustNotBeZero => {},
-        .LinkedEventChainOpen => {},
-        .LinkedEventFailed => {},
-        .OverflowsCredits => {},
-        .OverflowsCreditsPending => {},
-        .OverflowsCreditsPosted => {},
-        .OverflowsDebits => {},
-        .OverflowsDebitsPending => {},
-        .OverflowsDebitsPosted => {},
-        .OverflowsTimeout => {},
-        .PendingIdMustBeDifferent => {},
-        .PendingIdMustBeZero => {},
-        .PendingIdMustNotBeIntMax => {},
-        .PendingIdMustNotBeZero => {},
-        .PendingTransferAlreadyPosted => {},
-        .PendingTransferAlreadyVoided => {},
-        .PendingTransferExpired => {},
-        .PendingTransferHasDifferentAmount => {},
-        .PendingTransferHasDifferentCode => {},
-        .PendingTransferHasDifferentCreditAccountId => {},
-        .PendingTransferHasDifferentDebitAccountId => {},
-        .PendingTransferHasDifferentLedger => {},
-        .PendingTransferNotFound => {},
-        .PendingTransferNotPending => {},
-        .ReservedFlag => {},
-        .TimeoutReservedForPendingTransfer => {},
-        .TimestampMustBeZero => {},
-        .TransferMustHaveTheSameLedgerAsAccounts => {},
-    }
 }
 
 /// Recursively decrement Roc-owned fields in TigerBeetleTransfer.
@@ -1296,14 +963,14 @@ pub fn increfTigerBeetleAccountFilter(value: TigerBeetleAccountFilter, amount: i
     _ = amount;
 }
 
-/// Recursively decrement Roc-owned fields in __AnonStruct21.
-pub fn decref__AnonStruct21(value: __AnonStruct21, roc_host: *RocHost) void {
+/// Recursively decrement Roc-owned fields in __AnonStruct20.
+pub fn decref__AnonStruct20(value: __AnonStruct20, roc_host: *RocHost) void {
     _ = value;
     _ = roc_host;
 }
 
-/// Increment Roc-owned fields in __AnonStruct21.
-pub fn incref__AnonStruct21(value: __AnonStruct21, amount: isize) void {
+/// Increment Roc-owned fields in __AnonStruct20.
+pub fn incref__AnonStruct20(value: __AnonStruct20, amount: isize) void {
     _ = value;
     _ = amount;
 }
@@ -1320,14 +987,14 @@ pub fn increfTigerBeetleAccountBalance(value: TigerBeetleAccountBalance, amount:
     _ = amount;
 }
 
-/// Recursively decrement Roc-owned fields in __AnonStruct24.
-pub fn decref__AnonStruct24(value: __AnonStruct24, roc_host: *RocHost) void {
+/// Recursively decrement Roc-owned fields in __AnonStruct23.
+pub fn decref__AnonStruct23(value: __AnonStruct23, roc_host: *RocHost) void {
     _ = value;
     _ = roc_host;
 }
 
-/// Increment Roc-owned fields in __AnonStruct24.
-pub fn incref__AnonStruct24(value: __AnonStruct24, amount: isize) void {
+/// Increment Roc-owned fields in __AnonStruct23.
+pub fn incref__AnonStruct23(value: __AnonStruct23, amount: isize) void {
     _ = value;
     _ = amount;
 }
@@ -1344,34 +1011,58 @@ pub fn increfTigerBeetleQueryFilter(value: TigerBeetleQueryFilter, amount: isize
     _ = amount;
 }
 
-/// Recursively decrement Roc-owned fields in __AnonStruct26.
-pub fn decref__AnonStruct26(value: __AnonStruct26, roc_host: *RocHost) void {
+/// Recursively decrement Roc-owned fields in __AnonStruct25.
+pub fn decref__AnonStruct25(value: __AnonStruct25, roc_host: *RocHost) void {
     _ = value;
     _ = roc_host;
 }
 
-/// Increment Roc-owned fields in __AnonStruct26.
-pub fn incref__AnonStruct26(value: __AnonStruct26, amount: isize) void {
+/// Increment Roc-owned fields in __AnonStruct25.
+pub fn incref__AnonStruct25(value: __AnonStruct25, amount: isize) void {
     _ = value;
     _ = amount;
 }
 
 /// Recursively decrement Roc-owned payloads in Try.
 pub fn decrefTry(value: Try, roc_host: *RocHost) void {
-    _ = roc_host;
     switch (value.tag) {
-        .Err => {},
+        .Err => {
+            decrefTigerBeetleClientInitErr(value.payload.err, roc_host);
+        },
         .Ok => {},
     }
 }
 
 /// Increment Roc-owned payloads in Try.
 pub fn increfTry(value: Try, amount: isize) void {
-    _ = amount;
     switch (value.tag) {
-        .Err => {},
+        .Err => {
+            increfTigerBeetleClientInitErr(value.payload.err, amount);
+        },
         .Ok => {},
     }
+}
+
+/// Recursively decrement Roc-owned payloads in TigerBeetleClientInitErr.
+pub fn decrefTigerBeetleClientInitErr(value: TigerBeetleClientInitErr, roc_host: *RocHost) void {
+    _ = roc_host;
+    _ = value;
+}
+
+/// Increment Roc-owned payloads in TigerBeetleClientInitErr.
+pub fn increfTigerBeetleClientInitErr(value: TigerBeetleClientInitErr, amount: isize) void {
+    _ = value;
+    _ = amount;
+}
+
+/// Recursively decrement Roc-owned fields in __AnonStruct28.
+pub fn decref__AnonStruct28(value: __AnonStruct28, roc_host: *RocHost) void {
+    value.addresses.decref(roc_host);
+}
+
+/// Increment Roc-owned fields in __AnonStruct28.
+pub fn incref__AnonStruct28(value: __AnonStruct28, amount: isize) void {
+    value.addresses.incref(amount);
 }
 
 // =============================================================================
@@ -1410,41 +1101,45 @@ pub extern fn roc_stdin_line() callconv(.c) RocStr;
 /// Roc signature: Str => {}
 pub extern fn roc_stdout_line(arg0: RocStr) callconv(.c) void;
 
-/// Hosted symbol for TigerBeetle.create_accounts!
-/// Roc signature: List(TigerBeetle.Account) => List(TigerBeetle.CreateAccountsResult)
-pub extern fn roc_tb_create_accounts(arg0: RocListWith(TigerBeetleAccount, false)) callconv(.c) RocListWith(TigerBeetleCreateAccountsResult, false);
+/// Hosted symbol for TigerBeetle.Client.create_accounts!
+/// Roc signature: TigerBeetle.Client, List(TigerBeetle.Account) => List(TigerBeetle.CreateAccountResult)
+pub extern fn roc_tb_create_accounts(arg0: RocListWith(TigerBeetleAccount, false)) callconv(.c) RocListWith(TigerBeetleCreateAccountResult, false);
 
-/// Hosted symbol for TigerBeetle.create_transfers!
-/// Roc signature: List(TigerBeetle.Transfer) => List(TigerBeetle.CreateTransfersResult)
-pub extern fn roc_tb_create_transfers(arg0: RocListWith(TigerBeetleTransfer, false)) callconv(.c) RocListWith(TigerBeetleCreateTransfersResult, false);
+/// Hosted symbol for TigerBeetle.Client.create_transfers!
+/// Roc signature: TigerBeetle.Client, List(TigerBeetle.Transfer) => List(TigerBeetle.CreateTransferResult)
+pub extern fn roc_tb_create_transfers(arg0: RocListWith(TigerBeetleTransfer, false)) callconv(.c) RocListWith(TigerBeetleCreateTransferResult, false);
 
-/// Hosted symbol for TigerBeetle.get_account_balances!
-/// Roc signature: TigerBeetle.AccountFilter => List(TigerBeetle.AccountBalance)
+/// Hosted symbol for TigerBeetle.Client.get_account_balances!
+/// Roc signature: TigerBeetle.Client, TigerBeetle.AccountFilter => List(TigerBeetle.AccountBalance)
 pub extern fn roc_tb_get_account_balances(arg0: TigerBeetleAccountFilter) callconv(.c) RocListWith(TigerBeetleAccountBalance, false);
 
-/// Hosted symbol for TigerBeetle.get_account_transfers!
-/// Roc signature: TigerBeetle.AccountFilter => List(TigerBeetle.Transfer)
+/// Hosted symbol for TigerBeetle.Client.get_account_transfers!
+/// Roc signature: TigerBeetle.Client, TigerBeetle.AccountFilter => List(TigerBeetle.Transfer)
 pub extern fn roc_tb_get_account_transfers(arg0: TigerBeetleAccountFilter) callconv(.c) RocListWith(TigerBeetleTransfer, false);
+
+/// Hosted symbol for TigerBeetle.Client.init!
+/// Roc signature: { addresses : Str, cluster_id : U128 } => Try(TigerBeetle.Client, TigerBeetle.Client.InitErr)
+pub extern fn roc_tb_client_init(arg0: TigerBeetleClientInitArgs) callconv(.c) Try;
+
+/// Hosted symbol for TigerBeetle.Client.lookup_accounts!
+/// Roc signature: TigerBeetle.Client, List(U128) => List(TigerBeetle.Account)
+pub extern fn roc_tb_lookup_accounts(arg0: RocListWith(u128, false)) callconv(.c) RocListWith(TigerBeetleAccount, false);
+
+/// Hosted symbol for TigerBeetle.Client.lookup_transfers!
+/// Roc signature: TigerBeetle.Client, List(U128) => List(TigerBeetle.Transfer)
+pub extern fn roc_tb_lookup_transfers(arg0: RocListWith(u128, false)) callconv(.c) RocListWith(TigerBeetleTransfer, false);
+
+/// Hosted symbol for TigerBeetle.Client.query_accounts!
+/// Roc signature: TigerBeetle.Client, TigerBeetle.QueryFilter => List(TigerBeetle.Account)
+pub extern fn roc_tb_query_accounts(arg0: TigerBeetleQueryFilter) callconv(.c) RocListWith(TigerBeetleAccount, false);
+
+/// Hosted symbol for TigerBeetle.Client.query_transfers!
+/// Roc signature: TigerBeetle.Client, TigerBeetle.QueryFilter => List(TigerBeetle.Transfer)
+pub extern fn roc_tb_query_transfers(arg0: TigerBeetleQueryFilter) callconv(.c) RocListWith(TigerBeetleTransfer, false);
 
 /// Hosted symbol for TigerBeetle.id!
 /// Roc signature: {} => U128
 pub extern fn roc_tb_id() callconv(.c) u128;
-
-/// Hosted symbol for TigerBeetle.lookup_accounts!
-/// Roc signature: List(U128) => List(TigerBeetle.Account)
-pub extern fn roc_tb_lookup_accounts(arg0: RocListWith(u128, false)) callconv(.c) RocListWith(TigerBeetleAccount, false);
-
-/// Hosted symbol for TigerBeetle.lookup_transfers!
-/// Roc signature: List(U128) => List(TigerBeetle.Transfer)
-pub extern fn roc_tb_lookup_transfers(arg0: RocListWith(u128, false)) callconv(.c) RocListWith(TigerBeetleTransfer, false);
-
-/// Hosted symbol for TigerBeetle.query_accounts!
-/// Roc signature: TigerBeetle.QueryFilter => List(TigerBeetle.Account)
-pub extern fn roc_tb_query_accounts(arg0: TigerBeetleQueryFilter) callconv(.c) RocListWith(TigerBeetleAccount, false);
-
-/// Hosted symbol for TigerBeetle.query_transfers!
-/// Roc signature: TigerBeetle.QueryFilter => List(TigerBeetle.Transfer)
-pub extern fn roc_tb_query_transfers(arg0: TigerBeetleQueryFilter) callconv(.c) RocListWith(TigerBeetleTransfer, false);
 
 /// Default memory management functions for Roc platforms.
 ///

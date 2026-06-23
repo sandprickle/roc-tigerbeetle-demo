@@ -1,7 +1,8 @@
 //! TigerBeetle hosted functions for the Roc platform.
 //!
-//! A single TB client is created lazily on first use and reused for the life of
-//! the process (see `g_tb`). TB's API is asynchronous — `tb_client_submit`
+//! A single TB client is created explicitly via `TigerBeetle.Client.init!` and
+//! reused for the life of the process (see `g_tb_client`). TB's API is
+//! asynchronous — `tb_client_submit`
 //! completes via `onCompletion` on the client's own thread — but Roc's hosted
 //! functions are synchronous, so each call submits one packet and blocks on a
 //! semaphore until the completion callback fires. This is sound because Roc runs
@@ -196,39 +197,63 @@ test "id: timestamp is masked to 48 bits" {
 const cluster_id: [16]u8 = [_]u8{0} ** 16; // local single-node cluster
 const address: []const u8 = "127.0.0.1:3000";
 
-const Bridge = struct {
-    client: tb.Client = undefined,
-    state: enum { uninitialized, ready, failed } = .uninitialized,
-};
-var g_tb: Bridge = .{};
+/// TigerBeetle client. API design of TigerBeetle.roc should prevent this from
+/// being accessed before it's initialized, but just in case we've made it an
+/// optional so we can fail gracefully if the unthinkable happens.
+var g_tb_client: ?tb.Client = null;
 
-/// Lazily initialize the shared client. Returns null if init fails.
-fn ensureClient() ?*tb.Client {
-    switch (g_tb.state) {
-        .ready => return &g_tb.client,
-        .failed => return null,
-        .uninitialized => {
-            const status = tb.tb_client_init(
-                &g_tb.client,
-                &cluster_id,
-                address.ptr,
-                @intCast(address.len),
-                0, // per-client ctx unused; per-call ctx travels in packet.user_data
-                &onCompletion,
-            );
-            if (status == .success) {
-                g_tb.state = .ready;
-                return &g_tb.client;
-            }
-            g_tb.state = .failed;
-            return null;
-        },
-    }
+pub fn initClient(
+    args: abi.TigerBeetleClientInitArgs,
+) callconv(.c) abi.Try {
+    // The `addresses` RocStr is owned by this hosted call; release it on exit.
+    // TB parses the addresses during init and does not retain the pointer.
+    const addresses = args.addresses;
+    defer addresses.decref(g_host.?);
+
+    // tb_client_init writes the live client into storage WE own, and that
+    // storage must stay pinned for the client's life — so make the global
+    // non-null first and hand TB a pointer to its payload. A zeroed Client is a
+    // safe placeholder: init overwrites it, and on failure we reset to null so
+    // submit!/deinit never treat a never-initialized client as live.
+    g_tb_client = std.mem.zeroes(tb.Client);
+
+    const status = tb.tb_client_init(
+        &g_tb_client.?,
+        &@bitCast(args.cluster_id),
+        addresses.asU8ptr(),
+        @intCast(addresses.len()),
+        0, // per-client ctx unused; per-call ctx travels in packet.user_data
+        &onCompletion,
+    );
+
+    if (status != .success) g_tb_client = null;
+
+    return switch (status) {
+        .success => tryOk(),
+        .unexpected => tryErr(abi.TigerBeetleClientInitErr.unexpected),
+        .out_of_memory => tryErr(abi.TigerBeetleClientInitErr.out_of_memory),
+        .address_invalid => tryErr(abi.TigerBeetleClientInitErr.address_invalid),
+        .address_limit_exceeded => tryErr(abi.TigerBeetleClientInitErr.address_limit_exceeded),
+        .system_resources => tryErr(abi.TigerBeetleClientInitErr.system_resources),
+        .network_subsystem => tryErr(abi.TigerBeetleClientInitErr.network_subsystem),
+        else => fatal("Unknown status"),
+    };
 }
 
+fn tryOk() abi.Try {
+    return abi.Try{ .payload = .{ .ok = {} }, .tag = abi.TryTag.Ok };
+}
+fn tryErr(err: abi.TigerBeetleClientInitErr) abi.Try {
+    return abi.Try{
+        .payload = .{ .err = err },
+        .tag = abi.TryTag.Err,
+    };
+}
 /// Tear down the shared client, if one was created. Called at process exit.
 pub fn deinitClient() void {
-    if (g_tb.state == .ready) _ = tb.tb_client_deinit(&g_tb.client);
+    if (g_tb_client) |*client| {
+        _ = tb.tb_client_deinit(client);
+    }
 }
 
 // --- async -> sync bridge --------------------------------------------------
@@ -287,7 +312,10 @@ fn submit(operation: tb.Operation, data: []const u8, out: []u8) u32 {
         @memset(out, 0xFF);
         return @intCast(out.len);
     }
-    const client = ensureClient() orelse
+    // Capture by pointer (`|*c|`), not by value: tb.Client "must remain pinned
+    // (stable address) for its lifetime", so submit against the global's storage
+    // rather than a transient stack copy.
+    const client: *tb.Client = if (g_tb_client) |*c| c else
         fatal("failed to initialize client (is `tigerbeetle start` running on 127.0.0.1:3000?)");
 
     var completion = Completion{ .out = out };
@@ -370,70 +398,94 @@ const TransferResultRecord = abi.TigerBeetleCreateTransfersResult;
 /// List(Account) => List({ status : CreateAccountStatus, timestamp : U64 })
 pub fn createAccounts(
     arg0: abi.RocListWith(abi.TigerBeetleAccount, false),
-) callconv(.c) abi.RocListWith(abi.TigerBeetleCreateAccountsResult, false) {
+) callconv(.c) abi.RocListWith(
+    abi.TigerBeetleCreateAccountResult,
+    false,
+) {
     const host = g_host.?;
-    const gpa = g_gpa.?;
-
+    // const gpa = g_gpa.?;
     var owned = arg0;
     defer owned.decref(host);
 
     const roc_accounts = owned.items();
-    const n = roc_accounts.len;
-    if (n == 0) return abi.RocListWith(abi.TigerBeetleCreateAccountsResult, false).empty();
-
-    // Dense results: one tb_create_account_result_t per submitted account.
-    const results = gpa.alloc(tb.CreateAccountResult, n) catch fatal("out of memory");
-    defer gpa.free(results);
-    const n_out = submit(
+    return submitInto(
+        abi.TigerBeetleCreateAccountResult,
+        tb.CreateAccountResult,
+        host,
         .create_accounts,
         std.mem.sliceAsBytes(roc_accounts),
-        std.mem.sliceAsBytes(results),
+        roc_accounts.len,
     );
 
-    const count = n_out / @sizeOf(tb.CreateAccountResult);
-    return decodeList(
-        tb.CreateAccountResult,
-        abi.TigerBeetleCreateAccountsResult,
-        host,
-        results[0..count],
-        accountResultToRoc,
-    );
+    // const n = roc_accounts.len;
+    // if (n == 0) return abi.RocListWith(abi.TigerBeetleCreateAccountsResult, false).empty();
+
+    // // Dense results: one tb_create_account_result_t per submitted account.
+    // const results = gpa.alloc(tb.CreateAccountResult, n) catch fatal("out of memory");
+    // defer gpa.free(results);
+    // const n_out = submit(
+    //     .create_accounts,
+    //     std.mem.sliceAsBytes(roc_accounts),
+    //     std.mem.sliceAsBytes(results),
+    // );
+
+    // const count = n_out / @sizeOf(tb.CreateAccountResult);
+    // return decodeList(
+    //     tb.CreateAccountResult,
+    //     abi.TigerBeetleCreateAccountsResult,
+    //     host,
+    //     results[0..count],
+    //     accountResultToRoc,
+    // );
 }
 
 /// Hosted function: TigerBeetle.create_transfers!
 /// List(Transfer) => List({ status : CreateTransferStatus, timestamp : U64 })
 pub fn createTransfers(
     arg0: abi.RocListWith(abi.TigerBeetleTransfer, false),
-) callconv(.c) abi.RocListWith(abi.TigerBeetleCreateTransfersResult, false) {
+) callconv(.c) abi.RocListWith(
+    abi.TigerBeetleCreateTransferResult,
+    false,
+) {
     const host = g_host.?;
-    const gpa = g_gpa.?;
-
     var owned = arg0;
     defer owned.decref(host);
 
     const roc_transfers = owned.items();
-    const n = roc_transfers.len;
-    if (n == 0) return abi.RocListWith(abi.TigerBeetleCreateTransfersResult, false).empty();
-
-    // Dense results: one tb_create_transfer_result_t per submitted transfer.
-    const results = gpa.alloc(tb.CreateTransferResult, n) catch fatal(
-        "out of memory",
-    );
-    defer gpa.free(results);
-    const n_out = submit(
+    return submitInto(
+        abi.TigerBeetleCreateTransferResult,
+        tb.CreateTransferResult,
+        host,
         .create_transfers,
         std.mem.sliceAsBytes(roc_transfers),
-        std.mem.sliceAsBytes(results),
+        roc_transfers.len,
     );
 
-    const count = n_out / @sizeOf(tb.CreateTransferResult);
-    return decodeList(
-        tb.CreateTransferResult,
-        abi.TigerBeetleCreateTransfersResult,
-        host,
-        results[0..count],
-        transferResultToRoc,
-    );
+    // const n = roc_transfers.len;
+    // if (n == 0) return abi.RocListWith(
+    //     abi.TigerBeetleCreateTransferResult,
+    //     false,
+    // ).empty();
+
+    // // Dense results: one tb_create_transfer_result_t per submitted transfer.
+    // const results = gpa.alloc(tb.CreateTransferResult, n) catch fatal(
+    //     "out of memory",
+    // );
+    // defer gpa.free(results);
+    // const n_out = submit(
+    //     .create_transfers,
+    //     std.mem.sliceAsBytes(roc_transfers),
+    //     std.mem.sliceAsBytes(results),
+    // );
+
+    // const count = n_out / @sizeOf(tb.CreateTransferResult);
+    // return decodeList(
+    //     tb.CreateTransferResult,
+    //     abi.TigerBeetleCreateTransfersResult,
+    //     host,
+    //     results[0..count],
+    //     transferResultToRoc,
+    // );
 }
 
 // --- lookup_accounts! / lookup_transfers! ----------------------------------

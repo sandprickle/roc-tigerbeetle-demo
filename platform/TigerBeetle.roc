@@ -1,4 +1,34 @@
 TigerBeetle := [].{
+	Client :: {}.{
+		create_accounts! : Client, List(Account) => List(CreateAccountResult)
+
+		create_transfers! : Client, List(Transfer) => List(CreateTransferResult)
+
+		lookup_accounts! : Client, List(U128) => List(Account)
+
+		lookup_transfers! : Client, List(U128) => List(Transfer)
+
+		get_account_transfers! : Client, AccountFilter => List(Transfer)
+
+		get_account_balances! : Client, AccountFilter => List(AccountBalance)
+
+		query_accounts! : Client, QueryFilter => List(Account)
+
+		query_transfers! : Client, QueryFilter => List(Transfer)
+
+		## Initializes a new TigerBeetle Client.
+		init! : { cluster_id : U128, addresses : Str } => Try(Client, InitErr)
+
+		InitErr := [
+			Unexpected,
+			OutOfMemory,
+			AddressInvalid,
+			AddressLimitExceeded,
+			SystemResources,
+			NetworkSubsystem,
+		]
+	}
+
 	AccountFlags := [].{
 		none = 0.U16
 		linked = 1.U16
@@ -105,6 +135,7 @@ TigerBeetle := [].{
 			timestamp,
 		}
 
+		Flags : AccountFlags
 	}
 
 	Transfer :=
@@ -200,6 +231,7 @@ TigerBeetle := [].{
 				flags: new_flags,
 			}
 
+			Flags : TransferFlags
 		}
 
 	# `tb_account_filter_t` — selects the transfers/balances involving one account
@@ -404,131 +436,252 @@ TigerBeetle := [].{
 		}
 	}
 
-	CreateAccountStatus := [
-		Created,
-		LinkedEventFailed,
-		LinkedEventChainOpen,
-		TimestampMustBeZero,
-		ReservedField,
-		ReservedFlag,
-		IdMustNotBeZero,
-		IdMustNotBeIntMax,
-		FlagsAreMutuallyExclusive,
-		DebitsPendingMustBeZero,
-		DebitsPostedMustBeZero,
-		CreditsPendingMustBeZero,
-		CreditsPostedMustBeZero,
-		LedgerMustNotBeZero,
-		CodeMustNotBeZero,
-		ExistsWithDifferentFlags,
-		ExistsWithDifferentUserData128,
-		ExistsWithDifferentUserData64,
-		ExistsWithDifferentUserData32,
-		ExistsWithDifferentLedger,
-		ExistsWithDifferentCode,
-		Exists,
-		ImportedEventExpected,
-		ImportedEventNotExpected,
-		ImportedEventTimestampOutOfRange,
-		ImportedEventTimestampMustNotAdvance,
-		ImportedEventTimestampMustNotRegress,
-	]
-
-	CreateTransferStatus := [
-		Created,
-		LinkedEventFailed,
-		LinkedEventChainOpen,
-		TimestampMustBeZero,
-		ReservedFlag,
-		IdMustNotBeZero,
-		IdMustNotBeIntMax,
-		FlagsAreMutuallyExclusive,
-		DebitAccountIdMustNotBeZero,
-		DebitAccountIdMustNotBeIntMax,
-		CreditAccountIdMustNotBeZero,
-		CreditAccountIdMustNotBeIntMax,
-		AccountsMustBeDifferent,
-		PendingIdMustBeZero,
-		PendingIdMustNotBeZero,
-		PendingIdMustNotBeIntMax,
-		PendingIdMustBeDifferent,
-		TimeoutReservedForPendingTransfer,
-		LedgerMustNotBeZero,
-		CodeMustNotBeZero,
-		DebitAccountNotFound,
-		CreditAccountNotFound,
-		AccountsMustHaveTheSameLedger,
-		TransferMustHaveTheSameLedgerAsAccounts,
-		PendingTransferNotFound,
-		PendingTransferNotPending,
-		PendingTransferHasDifferentDebitAccountId,
-		PendingTransferHasDifferentCreditAccountId,
-		PendingTransferHasDifferentLedger,
-		PendingTransferHasDifferentCode,
-		ExceedsPendingTransferAmount,
-		PendingTransferHasDifferentAmount,
-		PendingTransferAlreadyPosted,
-		PendingTransferAlreadyVoided,
-		PendingTransferExpired,
-		ExistsWithDifferentFlags,
-		ExistsWithDifferentDebitAccountId,
-		ExistsWithDifferentCreditAccountId,
-		ExistsWithDifferentAmount,
-		ExistsWithDifferentPendingId,
-		ExistsWithDifferentUserData128,
-		ExistsWithDifferentUserData64,
-		ExistsWithDifferentUserData32,
-		ExistsWithDifferentTimeout,
-		ExistsWithDifferentCode,
-		Exists,
-		OverflowsDebitsPending,
-		OverflowsCreditsPending,
-		OverflowsDebitsPosted,
-		OverflowsCreditsPosted,
-		OverflowsDebits,
-		OverflowsCredits,
-		OverflowsTimeout,
-		ExceedsCredits,
-		ExceedsDebits,
-		ImportedEventExpected,
-		ImportedEventNotExpected,
-		ImportedEventTimestampOutOfRange,
-		ImportedEventTimestampMustNotAdvance,
-		ImportedEventTimestampMustNotRegress,
-		ImportedEventTimestampMustPostdateDebitAccount,
-		ImportedEventTimestampMustPostdateCreditAccount,
-		ImportedEventTimeoutMustBeZero,
-		ClosingTransferMustBePending,
-		DebitAccountAlreadyClosed,
-		CreditAccountAlreadyClosed,
-		ExistsWithDifferentLedger,
-		IdAlreadyFailed,
-	]
-
-	CreateAccountsResult := {
+	CreateTransferResult :: {
 		timestamp : U64,
-		status : CreateAccountStatus,
-	}
-	create_accounts! : List(Account) => List(CreateAccountsResult)
+		status : U32,
+		_reserved : U32,
+	}.{
+		status_created = 0xFFFFFFFF.U32
+		status_exists = 46.U32
 
-	CreateTransfersResult := {
+		is_created : CreateTransferResult -> Bool
+		is_created = |result| result.status == status_created
+
+		is_ok : CreateTransferResult -> Bool
+		is_ok = |result| result.status == status_created or result.status == status_exists
+
+		timestamp : CreateTransferResult -> U64
+		timestamp = |result| result.timestamp
+
+		status : CreateTransferResult -> Status
+		status = |result| match result.status {
+			0xFFFFFFFF => Created
+			1 => LinkedEventFailed
+			2 => LinkedEventChainOpen
+			3 => TimestampMustBeZero
+			4 => ReservedFlag
+			5 => IdMustNotBeZero
+			6 => IdMustNotBeIntMax
+			7 => FlagsAreMutuallyExclusive
+			8 => DebitAccountIdMustNotBeZero
+			9 => DebitAccountIdMustNotBeIntMax
+			10 => CreditAccountIdMustNotBeZero
+			11 => CreditAccountIdMustNotBeIntMax
+			12 => AccountsMustBeDifferent
+			13 => PendingIdMustBeZero
+			14 => PendingIdMustNotBeZero
+			15 => PendingIdMustNotBeIntMax
+			16 => PendingIdMustBeDifferent
+			17 => TimeoutReservedForPendingTransfer
+			19 => LedgerMustNotBeZero
+			20 => CodeMustNotBeZero
+			21 => DebitAccountNotFound
+			22 => CreditAccountNotFound
+			23 => AccountsMustHaveTheSameLedger
+			24 => TransferMustHaveTheSameLedgerAsAccounts
+			25 => PendingTransferNotFound
+			26 => PendingTransferNotPending
+			27 => PendingTransferHasDifferentDebitAccountId
+			28 => PendingTransferHasDifferentCreditAccountId
+			29 => PendingTransferHasDifferentLedger
+			30 => PendingTransferHasDifferentCode
+			31 => ExceedsPendingTransferAmount
+			32 => PendingTransferHasDifferentAmount
+			33 => PendingTransferAlreadyPosted
+			34 => PendingTransferAlreadyVoided
+			35 => PendingTransferExpired
+			36 => ExistsWithDifferentFlags
+			37 => ExistsWithDifferentDebitAccountId
+			38 => ExistsWithDifferentCreditAccountId
+			39 => ExistsWithDifferentAmount
+			40 => ExistsWithDifferentPendingId
+			41 => ExistsWithDifferentUserData128
+			42 => ExistsWithDifferentUserData64
+			43 => ExistsWithDifferentUserData32
+			44 => ExistsWithDifferentTimeout
+			45 => ExistsWithDifferentCode
+			46 => Exists
+			47 => OverflowsDebitsPending
+			48 => OverflowsCreditsPending
+			49 => OverflowsDebitsPosted
+			50 => OverflowsCreditsPosted
+			51 => OverflowsDebits
+			52 => OverflowsCredits
+			53 => OverflowsTimeout
+			54 => ExceedsCredits
+			55 => ExceedsDebits
+			56 => ImportedEventExpected
+			57 => ImportedEventNotExpected
+			58 => ImportedEventTimestampOutOfRange
+			59 => ImportedEventTimestampMustNotAdvance
+			60 => ImportedEventTimestampMustNotRegress
+			61 => ImportedEventTimestampMustPostdateDebitAccount
+			62 => ImportedEventTimestampMustPostdateCreditAccount
+			63 => ImportedEventTimeoutMustBeZero
+			64 => ClosingTransferMustBePending
+			65 => DebitAccountAlreadyClosed
+			66 => CreditAccountAlreadyClosed
+			67 => ExistsWithDifferentLedger
+			68 => IdAlreadyFailed
+			_ => {
+				crash "Unknown create_transfers status: ${result.status.to_str()}"
+			}
+		}
+
+		Status := [
+			Created,
+			LinkedEventFailed,
+			LinkedEventChainOpen,
+			TimestampMustBeZero,
+			ReservedFlag,
+			IdMustNotBeZero,
+			IdMustNotBeIntMax,
+			FlagsAreMutuallyExclusive,
+			DebitAccountIdMustNotBeZero,
+			DebitAccountIdMustNotBeIntMax,
+			CreditAccountIdMustNotBeZero,
+			CreditAccountIdMustNotBeIntMax,
+			AccountsMustBeDifferent,
+			PendingIdMustBeZero,
+			PendingIdMustNotBeZero,
+			PendingIdMustNotBeIntMax,
+			PendingIdMustBeDifferent,
+			TimeoutReservedForPendingTransfer,
+			LedgerMustNotBeZero,
+			CodeMustNotBeZero,
+			DebitAccountNotFound,
+			CreditAccountNotFound,
+			AccountsMustHaveTheSameLedger,
+			TransferMustHaveTheSameLedgerAsAccounts,
+			PendingTransferNotFound,
+			PendingTransferNotPending,
+			PendingTransferHasDifferentDebitAccountId,
+			PendingTransferHasDifferentCreditAccountId,
+			PendingTransferHasDifferentLedger,
+			PendingTransferHasDifferentCode,
+			ExceedsPendingTransferAmount,
+			PendingTransferHasDifferentAmount,
+			PendingTransferAlreadyPosted,
+			PendingTransferAlreadyVoided,
+			PendingTransferExpired,
+			ExistsWithDifferentFlags,
+			ExistsWithDifferentDebitAccountId,
+			ExistsWithDifferentCreditAccountId,
+			ExistsWithDifferentAmount,
+			ExistsWithDifferentPendingId,
+			ExistsWithDifferentUserData128,
+			ExistsWithDifferentUserData64,
+			ExistsWithDifferentUserData32,
+			ExistsWithDifferentTimeout,
+			ExistsWithDifferentCode,
+			Exists,
+			OverflowsDebitsPending,
+			OverflowsCreditsPending,
+			OverflowsDebitsPosted,
+			OverflowsCreditsPosted,
+			OverflowsDebits,
+			OverflowsCredits,
+			OverflowsTimeout,
+			ExceedsCredits,
+			ExceedsDebits,
+			ImportedEventExpected,
+			ImportedEventNotExpected,
+			ImportedEventTimestampOutOfRange,
+			ImportedEventTimestampMustNotAdvance,
+			ImportedEventTimestampMustNotRegress,
+			ImportedEventTimestampMustPostdateDebitAccount,
+			ImportedEventTimestampMustPostdateCreditAccount,
+			ImportedEventTimeoutMustBeZero,
+			ClosingTransferMustBePending,
+			DebitAccountAlreadyClosed,
+			CreditAccountAlreadyClosed,
+			ExistsWithDifferentLedger,
+			IdAlreadyFailed,
+		]
+	}
+
+	CreateAccountResult :: {
 		timestamp : U64,
-		status : CreateTransferStatus,
+		status : U32,
+		_reserved : U32,
+	}.{
+		status_created = 0xFFFFFFFF.U32
+		status_exists = 21.U32
+
+		is_created : CreateAccountResult -> Bool
+		is_created = |result| result.status == status_created
+
+		is_ok : CreateAccountResult -> Bool
+		is_ok = |result| result.status == status_created or result.status == status_exists
+
+		timestamp : CreateAccountResult -> U64
+		timestamp = |result| result.timestamp
+
+		status : CreateAccountResult -> Status
+		status = |result| match result.status {
+			0xFFFFFFFF => Created
+			1 => LinkedEventFailed
+			2 => LinkedEventChainOpen
+			3 => TimestampMustBeZero
+			4 => ReservedField
+			5 => ReservedFlag
+			6 => IdMustNotBeZero
+			7 => IdMustNotBeIntMax
+			8 => FlagsAreMutuallyExclusive
+			9 => DebitsPendingMustBeZero
+			10 => DebitsPostedMustBeZero
+			11 => CreditsPendingMustBeZero
+			12 => CreditsPostedMustBeZero
+			13 => LedgerMustNotBeZero
+			14 => CodeMustNotBeZero
+			15 => ExistsWithDifferentFlags
+			16 => ExistsWithDifferentUserData128
+			17 => ExistsWithDifferentUserData64
+			18 => ExistsWithDifferentUserData32
+			19 => ExistsWithDifferentLedger
+			20 => ExistsWithDifferentCode
+			21 => Exists
+			22 => ImportedEventExpected
+			23 => ImportedEventNotExpected
+			24 => ImportedEventTimestampOutOfRange
+			25 => ImportedEventTimestampMustNotAdvance
+			26 => ImportedEventTimestampMustNotRegress
+			_ => {
+				crash "Unknown create_accounts status: ${result.status.to_str()}"
+			}
+		}
+
+		Status := [
+			Created,
+			LinkedEventFailed,
+			LinkedEventChainOpen,
+			TimestampMustBeZero,
+			ReservedField,
+			ReservedFlag,
+			IdMustNotBeZero,
+			IdMustNotBeIntMax,
+			FlagsAreMutuallyExclusive,
+			DebitsPendingMustBeZero,
+			DebitsPostedMustBeZero,
+			CreditsPendingMustBeZero,
+			CreditsPostedMustBeZero,
+			LedgerMustNotBeZero,
+			CodeMustNotBeZero,
+			ExistsWithDifferentFlags,
+			ExistsWithDifferentUserData128,
+			ExistsWithDifferentUserData64,
+			ExistsWithDifferentUserData32,
+			ExistsWithDifferentLedger,
+			ExistsWithDifferentCode,
+			Exists,
+			ImportedEventExpected,
+			ImportedEventNotExpected,
+			ImportedEventTimestampOutOfRange,
+			ImportedEventTimestampMustNotAdvance,
+			ImportedEventTimestampMustNotRegress,
+		]
+
 	}
-	create_transfers! : List(Transfer) => List(CreateTransfersResult)
-
-	lookup_accounts! : List(U128) => List(Account)
-
-	lookup_transfers! : List(U128) => List(Transfer)
-
-	get_account_transfers! : AccountFilter => List(Transfer)
-
-	get_account_balances! : AccountFilter => List(AccountBalance)
-
-	query_accounts! : QueryFilter => List(Account)
-
-	query_transfers! : QueryFilter => List(Transfer)
-
 	# Generate a TigerBeetle time-based identifier (host-managed state keeps
 	# these monotonically increasing, even within a single millisecond).
 	id! : () => U128
