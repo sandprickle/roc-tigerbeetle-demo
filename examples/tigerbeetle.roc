@@ -2,7 +2,7 @@ app [main!] { pf: platform "../platform/main.roc" }
 
 import pf.Stdout
 import pf.Stderr
-import pf.TigerBeetle as Tb exposing [Account, AccountFlags]
+import pf.TigerBeetle as Tb exposing [Account]
 
 main! : List(Str) => Try({}, [Exit(I32)])
 main! = |_args| {
@@ -23,14 +23,12 @@ demo! : Tb.Client => {}
 demo! = |client| {
 	# Two valid accounts plus one invalid (id 0) to show both result paths.
 	accounts = [
-		Account.init({ id: Tb.id!(), ledger: 700 }).code(10).flags(
-			U16.bitwise_or(
-				AccountFlags.history,
-				AccountFlags.debits_must_not_exceed_credits,
-			),
-		),
-		Account.init({ id: Tb.id!(), ledger: 700 }).code(7),
-		Account.init({ id: 0, ledger: 700 }).code(10),
+		Account.init({ id: Tb.id!(), ledger: 700, code: 10 })
+			.flags([History, DebitsMustNotExceedCredits])
+			.user_data_32(47),
+		Account.init({ id: Tb.id!(), ledger: 700, code: 7 })
+			.flags([History]),
+		Account.init({ id: 0, ledger: 700, code: 10 }),
 	]
 
 	Stdout.line!("Creating ${accounts.len().to_str()} accounts...")

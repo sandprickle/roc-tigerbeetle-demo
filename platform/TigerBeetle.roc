@@ -1,3 +1,26 @@
+account_flags = {
+	none: 0.U16,
+	linked: 1.U16,
+	debits_must_not_exceed_credits: 2.U16,
+	credits_must_not_exceed_debits: 4.U16,
+	history: 8.U16,
+	imported: 16.U16,
+	closed: 32.U16,
+}
+
+transfer_flags = {
+	none: 0.U16,
+	linked: 1.U16,
+	pending: 2.U16,
+	post_pending_transfer: 4.U16,
+	void_pending_transfer: 8.U16,
+	balancing_debit: 16.U16,
+	balancing_credit: 32.U16,
+	closing_debit: 64.U16,
+	closing_credit: 128.U16,
+	imported: 256.U16,
+}
+
 TigerBeetle := [].{
 	Client :: {}.{
 		create_accounts! : Client, List(Account) => List(CreateAccountResult)
@@ -27,29 +50,6 @@ TigerBeetle := [].{
 			SystemResources,
 			NetworkSubsystem,
 		]
-	}
-
-	AccountFlags := [].{
-		none = 0.U16
-		linked = 1.U16
-		debits_must_not_exceed_credits = 2.U16
-		credits_must_not_exceed_debits = 4.U16
-		history = 8.U16
-		imported = 16.U16
-		closed = 32.U16
-	}
-
-	TransferFlags := [].{
-		none = 0.U16
-		linked = 1.U16
-		pending = 2.U16
-		post_pending_transfer = 4.U16
-		void_pending_transfer = 8.U16
-		balancing_debit = 16.U16
-		balancing_credit = 32.U16
-		closing_debit = 64.U16
-		closing_credit = 128.U16
-		imported = 256.U16
 	}
 
 	# `tb_account_filter_t.flags` is a `uint32_t`, so these constants are U32
@@ -85,8 +85,9 @@ TigerBeetle := [].{
 		init : {
 			id : U128,
 			ledger : U32,
+			code : U16,
 		} -> Account
-		init = |{ id, ledger }| {
+		init = |{ id, ledger, code }| {
 			id,
 			debits_pending: 0,
 			debits_posted: 0,
@@ -96,21 +97,15 @@ TigerBeetle := [].{
 			user_data_64: 0,
 			user_data_32: 0,
 			ledger,
-			code: 0,
+			code,
 			flags: 0,
 			timestamp: 0,
 		}
 
-		code : Account, U16 -> Account
-		code = |account, code| {
-			..account,
-			code,
-		}
-
-		flags : Account, U16 -> Account
+		flags : Account, List(Flags) -> Account
 		flags = |account, new_flags| {
 			..account,
-			flags: new_flags,
+			flags: Flags.build(new_flags),
 		}
 		user_data_128 : Account, U128 -> Account
 		user_data_128 = |account, user_data_128| {
@@ -135,104 +130,178 @@ TigerBeetle := [].{
 			timestamp,
 		}
 
-		Flags : AccountFlags
+		Flags := [
+			None,
+			Linked,
+			DebitsMustNotExceedCredits,
+			CreditsMustNotExceedDebits,
+			History,
+			Imported,
+			Closed,
+		].{
+			none = 0.U16
+			linked = 1.U16
+			debits_must_not_exceed_credits = 2.U16
+			credits_must_not_exceed_debits = 4.U16
+			history = 8.U16
+			imported = 16.U16
+			closed = 32.U16
+
+			build : List(Flags) -> U16
+			build = |flag_list| flag_list.fold(
+				0.U16,
+				|acc, flag| acc.bitwise_or(
+					match flag {
+						None => none
+						Linked => linked
+						DebitsMustNotExceedCredits =>
+							debits_must_not_exceed_credits
+						CreditsMustNotExceedDebits =>
+							credits_must_not_exceed_debits
+						History => history
+						Imported => imported
+						Closed => closed
+					},
+				),
+			)
+		}
 	}
 
-	Transfer :=
-		{
+	Transfer := {
+		id : U128,
+		debit_account_id : U128,
+		credit_account_id : U128,
+		amount : U128,
+		pending_id : U128,
+		user_data_128 : U128,
+		user_data_64 : U64,
+		user_data_32 : U32,
+		timeout : U32,
+		ledger : U32,
+		code : U16,
+		flags : U16,
+		timestamp : U64,
+	}.{
+		init : {
 			id : U128,
 			debit_account_id : U128,
 			credit_account_id : U128,
 			amount : U128,
-			pending_id : U128,
-			user_data_128 : U128,
-			user_data_64 : U64,
-			user_data_32 : U32,
-			timeout : U32,
 			ledger : U32,
-			code : U16,
-			flags : U16,
-			timestamp : U64,
-		}.{
-			init : {
-				id : U128,
-				debit_account_id : U128,
-				credit_account_id : U128,
-				amount : U128,
-				ledger : U32,
-			} -> Transfer
-			init = |{ id, debit_account_id, credit_account_id, amount, ledger }| {
-				id,
-				debit_account_id,
-				credit_account_id,
-				amount,
-				pending_id: 0,
-				user_data_128: 0,
-				user_data_64: 0,
-				user_data_32: 0,
-				timeout: 0,
-				ledger,
-				code: 0,
-				flags: 0,
-				timestamp: 0,
-			}
-
-			debit_account_id : Transfer, U128 -> Transfer
-			debit_account_id = |transfer, debit_account_id| {
-				..transfer,
-				debit_account_id,
-			}
-
-			credit_account_id : Transfer, U128 -> Transfer
-			credit_account_id = |transfer, credit_account_id| {
-				..transfer,
-				credit_account_id,
-			}
-
-			pending_id : Transfer, U128 -> Transfer
-			pending_id = |transfer, pending_id| {
-				..transfer,
-				pending_id,
-			}
-
-			user_data_128 : Transfer, U128 -> Transfer
-			user_data_128 = |transfer, user_data_128| {
-				..transfer,
-				user_data_128,
-			}
-
-			user_data_64 : Transfer, U64 -> Transfer
-			user_data_64 = |transfer, user_data_64| {
-				..transfer,
-				user_data_64,
-			}
-
-			user_data_32 : Transfer, U32 -> Transfer
-			user_data_32 = |transfer, user_data_32| {
-				..transfer,
-				user_data_32,
-			}
-
-			timeout : Transfer, U32 -> Transfer
-			timeout = |transfer, timeout| {
-				..transfer,
-				timeout,
-			}
-
-			code : Transfer, U16 -> Transfer
-			code = |transfer, code| {
-				..transfer,
-				code,
-			}
-
-			flags : Transfer, U16 -> Transfer
-			flags = |transfer, new_flags| {
-				..transfer,
-				flags: new_flags,
-			}
-
-			Flags : TransferFlags
+		} -> Transfer
+		init = |{ id, debit_account_id, credit_account_id, amount, ledger }| {
+			id,
+			debit_account_id,
+			credit_account_id,
+			amount,
+			pending_id: 0,
+			user_data_128: 0,
+			user_data_64: 0,
+			user_data_32: 0,
+			timeout: 0,
+			ledger,
+			code: 0,
+			flags: 0,
+			timestamp: 0,
 		}
+
+		debit_account_id : Transfer, U128 -> Transfer
+		debit_account_id = |transfer, debit_account_id| {
+			..transfer,
+			debit_account_id,
+		}
+
+		credit_account_id : Transfer, U128 -> Transfer
+		credit_account_id = |transfer, credit_account_id| {
+			..transfer,
+			credit_account_id,
+		}
+
+		pending_id : Transfer, U128 -> Transfer
+		pending_id = |transfer, pending_id| {
+			..transfer,
+			pending_id,
+		}
+
+		user_data_128 : Transfer, U128 -> Transfer
+		user_data_128 = |transfer, user_data_128| {
+			..transfer,
+			user_data_128,
+		}
+
+		user_data_64 : Transfer, U64 -> Transfer
+		user_data_64 = |transfer, user_data_64| {
+			..transfer,
+			user_data_64,
+		}
+
+		user_data_32 : Transfer, U32 -> Transfer
+		user_data_32 = |transfer, user_data_32| {
+			..transfer,
+			user_data_32,
+		}
+
+		timeout : Transfer, U32 -> Transfer
+		timeout = |transfer, timeout| {
+			..transfer,
+			timeout,
+		}
+
+		code : Transfer, U16 -> Transfer
+		code = |transfer, code| {
+			..transfer,
+			code,
+		}
+
+		flags : Transfer, List(Flags) -> Transfer
+		flags = |transfer, new_flags| {
+			..transfer,
+			flags: Flags.build(new_flags),
+		}
+
+		Flags := [
+			None,
+			Linked,
+			Pending,
+			PostPendingTransfer,
+			VoidPendingTransfer,
+			BalancingDebit,
+			BalancingCredit,
+			ClosingDebit,
+			ClosingCredit,
+			Imported,
+		].{
+			none = 0.U16
+			linked = 1.U16
+			pending = 2.U16
+			post_pending_transfer = 4.U16
+			void_pending_transfer = 8.U16
+			balancing_debit = 16.U16
+			balancing_credit = 32.U16
+			closing_debit = 64.U16
+			closing_credit = 128.U16
+			imported = 256.U16
+
+			build : List(Flags) -> U16
+			build = |flag_list| flag_list.fold(
+				0.U16,
+				|acc, flag| acc.bitwise_or(
+					match flag {
+						None => none
+						Linked => linked
+						Pending => pending
+						PostPendingTransfer => post_pending_transfer
+						VoidPendingTransfer => void_pending_transfer
+						BalancingDebit => balancing_debit
+						BalancingCredit => balancing_credit
+						ClosingDebit => closing_debit
+						ClosingCredit => closing_credit
+						Imported => imported
+					},
+				),
+			)
+		}
+	}
 
 	# `tb_account_filter_t` — selects the transfers/balances involving one account
 	# for get_account_transfers! and get_account_balances!.
