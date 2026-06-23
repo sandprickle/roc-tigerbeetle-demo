@@ -783,7 +783,7 @@ pub const TryTag = enum(u8) {
 /// Tag union: Try
 pub const Try = extern struct {
     payload: extern union {
-        err: TigerBeetleClientInitErr,
+        err: AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected,
         ok: void,
     },
     tag: TryTag,
@@ -796,8 +796,8 @@ comptime {
     }
 }
 
-/// Tag union: TigerBeetle.Client.InitErr
-pub const TigerBeetleClientInitErr = enum(u8) {
+/// Tag union: AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected
+pub const AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected = enum(u8) {
     address_invalid = 0,
     address_limit_exceeded = 1,
     network_subsystem = 2,
@@ -853,7 +853,7 @@ pub const TigerBeetleClientGet_account_transfersArgs = extern struct {
 };
 
 /// Arguments for TigerBeetle.Client.init!
-/// Roc signature: { addresses : Str, cluster_id : U128 } => Try(TigerBeetle.Client, TigerBeetle.Client.InitErr)
+/// Roc signature: { addresses : Str, cluster_id : U128 } => Try(TigerBeetle.Client, [AddressInvalid, AddressLimitExceeded, NetworkSubsystem, OutOfMemory, SystemResources, Unexpected])
 /// Refcounted fields are owned by the hosted function.
 pub const TigerBeetleClientInitArgs = extern struct {
     cluster_id: u128,
@@ -1027,7 +1027,7 @@ pub fn incref__AnonStruct25(value: __AnonStruct25, amount: isize) void {
 pub fn decrefTry(value: Try, roc_host: *RocHost) void {
     switch (value.tag) {
         .Err => {
-            decrefTigerBeetleClientInitErr(value.payload.err, roc_host);
+            decrefAddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected(value.payload.err, roc_host);
         },
         .Ok => {},
     }
@@ -1037,22 +1037,36 @@ pub fn decrefTry(value: Try, roc_host: *RocHost) void {
 pub fn increfTry(value: Try, amount: isize) void {
     switch (value.tag) {
         .Err => {
-            increfTigerBeetleClientInitErr(value.payload.err, amount);
+            increfAddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected(value.payload.err, amount);
         },
         .Ok => {},
     }
 }
 
-/// Recursively decrement Roc-owned payloads in TigerBeetleClientInitErr.
-pub fn decrefTigerBeetleClientInitErr(value: TigerBeetleClientInitErr, roc_host: *RocHost) void {
+/// Recursively decrement Roc-owned payloads in AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected.
+pub fn decrefAddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected(value: AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected, roc_host: *RocHost) void {
     _ = roc_host;
-    _ = value;
+    switch (value.tag) {
+        .AddressInvalid => {},
+        .AddressLimitExceeded => {},
+        .NetworkSubsystem => {},
+        .OutOfMemory => {},
+        .SystemResources => {},
+        .Unexpected => {},
+    }
 }
 
-/// Increment Roc-owned payloads in TigerBeetleClientInitErr.
-pub fn increfTigerBeetleClientInitErr(value: TigerBeetleClientInitErr, amount: isize) void {
-    _ = value;
+/// Increment Roc-owned payloads in AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected.
+pub fn increfAddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected(value: AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected, amount: isize) void {
     _ = amount;
+    switch (value.tag) {
+        .AddressInvalid => {},
+        .AddressLimitExceeded => {},
+        .NetworkSubsystem => {},
+        .OutOfMemory => {},
+        .SystemResources => {},
+        .Unexpected => {},
+    }
 }
 
 /// Recursively decrement Roc-owned fields in __AnonStruct28.
@@ -1118,7 +1132,7 @@ pub extern fn roc_tb_get_account_balances(arg0: TigerBeetleAccountFilter) callco
 pub extern fn roc_tb_get_account_transfers(arg0: TigerBeetleAccountFilter) callconv(.c) RocListWith(TigerBeetleTransfer, false);
 
 /// Hosted symbol for TigerBeetle.Client.init!
-/// Roc signature: { addresses : Str, cluster_id : U128 } => Try(TigerBeetle.Client, TigerBeetle.Client.InitErr)
+/// Roc signature: { addresses : Str, cluster_id : U128 } => Try(TigerBeetle.Client, [AddressInvalid, AddressLimitExceeded, NetworkSubsystem, OutOfMemory, SystemResources, Unexpected])
 pub extern fn roc_tb_client_init(arg0: TigerBeetleClientInitArgs) callconv(.c) Try;
 
 /// Hosted symbol for TigerBeetle.Client.lookup_accounts!

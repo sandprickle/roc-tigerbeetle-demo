@@ -40,16 +40,18 @@ TigerBeetle := [].{
 		query_transfers! : Client, QueryFilter => List(Transfer)
 
 		## Initializes a new TigerBeetle Client.
-		init! : { cluster_id : U128, addresses : Str } => Try(Client, InitErr)
-
-		InitErr := [
-			Unexpected,
-			OutOfMemory,
-			AddressInvalid,
-			AddressLimitExceeded,
-			SystemResources,
-			NetworkSubsystem,
-		]
+		init! : { cluster_id : U128, addresses : Str } => Try(
+			Client,
+			[
+				Unexpected,
+				OutOfMemory,
+				AddressInvalid,
+				AddressLimitExceeded,
+				SystemResources,
+				NetworkSubsystem,
+				..,
+			],
+		)
 	}
 
 	# `tb_account_filter_t.flags` is a `uint32_t`, so these constants are U32

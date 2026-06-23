@@ -230,12 +230,12 @@ pub fn initClient(
 
     return switch (status) {
         .success => tryOk(),
-        .unexpected => tryErr(abi.TigerBeetleClientInitErr.unexpected),
-        .out_of_memory => tryErr(abi.TigerBeetleClientInitErr.out_of_memory),
-        .address_invalid => tryErr(abi.TigerBeetleClientInitErr.address_invalid),
-        .address_limit_exceeded => tryErr(abi.TigerBeetleClientInitErr.address_limit_exceeded),
-        .system_resources => tryErr(abi.TigerBeetleClientInitErr.system_resources),
-        .network_subsystem => tryErr(abi.TigerBeetleClientInitErr.network_subsystem),
+        .unexpected => tryErr(.unexpected),
+        .out_of_memory => tryErr(.out_of_memory),
+        .address_invalid => tryErr(.address_invalid),
+        .address_limit_exceeded => tryErr(.address_limit_exceeded),
+        .system_resources => tryErr(.system_resources),
+        .network_subsystem => tryErr(.network_subsystem),
         else => fatal("Unknown status"),
     };
 }
@@ -243,7 +243,10 @@ pub fn initClient(
 fn tryOk() abi.Try {
     return abi.Try{ .payload = .{ .ok = {} }, .tag = abi.TryTag.Ok };
 }
-fn tryErr(err: abi.TigerBeetleClientInitErr) abi.Try {
+
+const TigerBeetleClientInitErr =
+    abi.AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected;
+fn tryErr(err: TigerBeetleClientInitErr) abi.Try {
     return abi.Try{
         .payload = .{ .err = err },
         .tag = abi.TryTag.Err,
@@ -315,8 +318,7 @@ fn submit(operation: tb.Operation, data: []const u8, out: []u8) u32 {
     // Capture by pointer (`|*c|`), not by value: tb.Client "must remain pinned
     // (stable address) for its lifetime", so submit against the global's storage
     // rather than a transient stack copy.
-    const client: *tb.Client = if (g_tb_client) |*c| c else
-        fatal("failed to initialize client (is `tigerbeetle start` running on 127.0.0.1:3000?)");
+    const client: *tb.Client = if (g_tb_client) |*c| c else fatal("failed to initialize client (is `tigerbeetle start` running on 127.0.0.1:3000?)");
 
     var completion = Completion{ .out = out };
     var packet = tb.Packet{
