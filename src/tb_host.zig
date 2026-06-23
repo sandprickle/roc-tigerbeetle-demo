@@ -1,7 +1,8 @@
 //! TigerBeetle hosted functions for the Roc platform.
 //!
-//! A single TB client is created lazily on first use and reused for the life of
-//! the process (see `g_tb`). TB's API is asynchronous — `tb_client_submit`
+//! A single TB client is created explicitly via `TigerBeetle.Client.init!` and
+//! reused for the life of the process (see `g_tb_client`). TB's API is
+//! asynchronous — `tb_client_submit`
 //! completes via `onCompletion` on the client's own thread — but Roc's hosted
 //! functions are synchronous, so each call submits one packet and blocks on a
 //! semaphore until the completion callback fires. This is sound because Roc runs
@@ -204,14 +205,28 @@ var g_tb_client: ?tb.Client = null;
 pub fn initClient(
     args: abi.TigerBeetleClientInitArgs,
 ) callconv(.c) abi.Try {
+    // The `addresses` RocStr is owned by this hosted call; release it on exit.
+    // TB parses the addresses during init and does not retain the pointer.
+    const addresses = args.addresses;
+    defer addresses.decref(g_host.?);
+
+    // tb_client_init writes the live client into storage WE own, and that
+    // storage must stay pinned for the client's life — so make the global
+    // non-null first and hand TB a pointer to its payload. A zeroed Client is a
+    // safe placeholder: init overwrites it, and on failure we reset to null so
+    // submit!/deinit never treat a never-initialized client as live.
+    g_tb_client = std.mem.zeroes(tb.Client);
+
     const status = tb.tb_client_init(
         &g_tb_client.?,
         &@bitCast(args.cluster_id),
-        @ptrFromInt(args.addresses.capacity_or_alloc_ptr),
-        @intCast(args.addresses.length),
+        addresses.asU8ptr(),
+        @intCast(addresses.len()),
         0, // per-client ctx unused; per-call ctx travels in packet.user_data
         &onCompletion,
     );
+
+    if (status != .success) g_tb_client = null;
 
     return switch (status) {
         .success => tryOk(),
@@ -297,7 +312,10 @@ fn submit(operation: tb.Operation, data: []const u8, out: []u8) u32 {
         @memset(out, 0xFF);
         return @intCast(out.len);
     }
-    var client = g_tb_client orelse
+    // Capture by pointer (`|*c|`), not by value: tb.Client "must remain pinned
+    // (stable address) for its lifetime", so submit against the global's storage
+    // rather than a transient stack copy.
+    const client: *tb.Client = if (g_tb_client) |*c| c else
         fatal("failed to initialize client (is `tigerbeetle start` running on 127.0.0.1:3000?)");
 
     var completion = Completion{ .out = out };
@@ -311,7 +329,7 @@ fn submit(operation: tb.Operation, data: []const u8, out: []u8) u32 {
         .opaque_fields = undefined,
     };
 
-    if (tb.tb_client_submit(&client, &packet) != .ok) fatal("tb_client_submit failed (client closed?)");
+    if (tb.tb_client_submit(client, &packet) != .ok) fatal("tb_client_submit failed (client closed?)");
     completion.done.waitUncancelable(std.Io.Threaded.global_single_threaded.io());
     if (completion.status != .ok) fatal("request did not complete OK (see TB_PACKET_STATUS)");
     return completion.out_len;

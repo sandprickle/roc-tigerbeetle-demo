@@ -46,15 +46,7 @@ demo! = |client| {
 		timestamp = result.timestamp()
 		status = result.status()
 
-		msg = match status {
-			Created => "  created (timestamp=${timestamp.to_str()})"
-			Exists => "  exists (timestamp=${timestamp.to_str()})"
-			IdMustNotBeZero => "  error: id must not be zero"
-			LedgerMustNotBeZero => "  error: ledger must not be zero"
-			CodeMustNotBeZero => "  error: code must not be zero"
-			_ => "  error: other"
-		}
-		Stdout.line!(msg)
+		Stdout.line!("${timestamp.to_str()} ${Str.inspect(status)}")
 	}
 
 }
