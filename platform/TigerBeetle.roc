@@ -135,15 +135,7 @@ TigerBeetle := [].{
 			timestamp,
 		}
 
-		Flags :: [].{
-			none = 0.U16
-			linked = 1.U16
-			debits_must_not_exceed_credits = 2.U16
-			credits_must_not_exceed_debits = 4.U16
-			history = 8.U16
-			imported = 16.U16
-			closed = 32.U16
-		}
+		Flags : AccountFlags
 	}
 
 	Transfer :=
@@ -239,6 +231,7 @@ TigerBeetle := [].{
 				flags: new_flags,
 			}
 
+			Flags : TransferFlags
 		}
 
 	# `tb_account_filter_t` — selects the transfers/balances involving one account
