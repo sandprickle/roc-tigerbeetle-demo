@@ -4,10 +4,6 @@ import pf.Stdout
 import pf.Stderr
 import pf.TigerBeetle as Tb exposing [Account]
 
-# Requires a local TigerBeetle running on 127.0.0.1:3000 (cluster 0):
-#   tigerbeetle format --cluster=0 --replica=0 --replica-count=1 0_0.tigerbeetle
-#   tigerbeetle start --addresses=3000 0_0.tigerbeetle
-
 main! : List(Str) => Try({}, [Exit(I32)])
 main! = |_args| {
 	Stdout.line!("Connecting to TigerBeetle...")
