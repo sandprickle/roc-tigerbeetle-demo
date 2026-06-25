@@ -10,6 +10,11 @@ roc_files=(*.roc)
 # Collect all host libraries from targets directories
 lib_files=()
 for lib in targets/*/*.a targets/*/*.o targets/*/*.lib; do
+    # Skip arm64win: TigerBeetle has no aarch64-windows client, so this
+    # platform doesn't support that target (commented out in main.roc).
+    if [[ "$lib" == targets/arm64win/* ]]; then
+        continue
+    fi
     if [[ -f "$lib" ]]; then
         lib_files+=("$lib")
     fi

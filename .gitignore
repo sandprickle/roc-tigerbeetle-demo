@@ -56,3 +56,4 @@ build-output/
 tigerbeetle
 
 bench/**/*_bench
+.envrc
