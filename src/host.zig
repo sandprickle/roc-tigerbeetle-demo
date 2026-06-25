@@ -150,6 +150,7 @@ comptime {
         @export(&hostedStdinLine, .{ .name = "roc_stdin_line", .visibility = .hidden });
         @export(&hostedStdoutLine, .{ .name = "roc_stdout_line", .visibility = .hidden });
         @export(&hostedHostPosixTime, .{ .name = "roc_host_posix_time", .visibility = .hidden });
+
         @export(&tb_host.createAccounts, .{ .name = "roc_tb_create_accounts", .visibility = .hidden });
         @export(&tb_host.createTransfers, .{ .name = "roc_tb_create_transfers", .visibility = .hidden });
         @export(&tb_host.lookupAccounts, .{ .name = "roc_tb_lookup_accounts", .visibility = .hidden });
@@ -198,12 +199,15 @@ fn platform_main(argc: usize, argv: [*][*:0]u8) c_int {
 
     var roc_host = abi.makeRocHost(&host_env.roc_env);
     g_roc_host = &roc_host;
-    tb_host.init(&roc_host, allocator);
+    tb_host.init(&roc_host, io);
 
     // Build List(Str) from argc/argv
     std.log.debug("[HOST] Building args...", .{});
     const args_list = buildStrArgsList(argc, argv, &roc_host);
-    std.log.debug("[HOST] args_list ptr=0x{x} len={d}", .{ @intFromPtr(args_list.elements_ptr), args_list.length });
+    std.log.debug("[HOST] args_list ptr=0x{x} len={d}", .{
+        @intFromPtr(args_list.elements_ptr),
+        args_list.length,
+    });
 
     // Call the app's main! entrypoint - returns I32 exit code
     std.log.debug("[HOST] Calling roc_main...", .{});

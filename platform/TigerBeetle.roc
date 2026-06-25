@@ -1,45 +1,48 @@
-account_flags = {
-	none: 0.U16,
-	linked: 1.U16,
-	debits_must_not_exceed_credits: 2.U16,
-	credits_must_not_exceed_debits: 4.U16,
-	history: 8.U16,
-	imported: 16.U16,
-	closed: 32.U16,
-}
-
-transfer_flags = {
-	none: 0.U16,
-	linked: 1.U16,
-	pending: 2.U16,
-	post_pending_transfer: 4.U16,
-	void_pending_transfer: 8.U16,
-	balancing_debit: 16.U16,
-	balancing_credit: 32.U16,
-	closing_debit: 64.U16,
-	closing_credit: 128.U16,
-	imported: 256.U16,
-}
-
 TigerBeetle := [].{
 	Client :: {}.{
+
+		## Create one or more `Account`s.
+		##
+		## [Official Docs](https://docs.tigerbeetle.com/reference/requests/create_accounts/)
 		create_accounts! : Client, List(Account) => List(CreateAccountResult)
 
+		## Create one or more `Transfers`. A successfully created transfer will
+		## modify the amount fields of its debit and credit accounts.
+		##
+		## [Official Docs](https://docs.tigerbeetle.com/reference/requests/create_transfers/)
 		create_transfers! : Client, List(Transfer) => List(CreateTransferResult)
 
+		## Fetch one or more `Account`s by their `id`s.
+		##
+		## [Official Docs](https://docs.tigerbeetle.com/reference/requests/lookup_accounts/)
 		lookup_accounts! : Client, List(U128) => List(Account)
 
+		## Fetch one or more `Transfer`s by their `id`s.
+		##
+		## [Official Docs](https://docs.tigerbeetle.com/reference/requests/lookup_transfers/)
 		lookup_transfers! : Client, List(U128) => List(Transfer)
 
+		## Fetch `Transfer`s involving a given `Account`.
+		##
+		## [Official Docs](https://docs.tigerbeetle.com/reference/requests/get_account_transfers/)
 		get_account_transfers! : Client, AccountFilter => List(Transfer)
 
+		## Fetch the historical `AccountBalance`s of a given `Account`.
+		##
+		## [Official Docs](https://docs.tigerbeetle.com/reference/requests/get_account_balances/)
 		get_account_balances! : Client, AccountFilter => List(AccountBalance)
 
+		## Query `Account`s by the intersection of some fields and by timestamp range.
+		##
+		## [Official Docs](https://docs.tigerbeetle.com/reference/requests/query_accounts/)
 		query_accounts! : Client, QueryFilter => List(Account)
 
+		## Query `Transfer`s by the intersection of some fields and by timestamp range.
+		##
+		## [Official Docs](https://docs.tigerbeetle.com/reference/requests/query_transfers/)
 		query_transfers! : Client, QueryFilter => List(Transfer)
 
-		## Initializes a new TigerBeetle Client.
+		## Initialize a new TigerBeetle client.
 		init! : { cluster_id : U128, addresses : Str } => Try(
 			Client,
 			[
@@ -54,21 +57,9 @@ TigerBeetle := [].{
 		)
 	}
 
-	# `tb_account_filter_t.flags` is a `uint32_t`, so these constants are U32
-	# (unlike AccountFlags/TransferFlags, whose struct fields are `uint16_t`).
-	AccountFilterFlags := [].{
-		none = 0.U32
-		debits = 1.U32
-		credits = 2.U32
-		reversed = 4.U32
-	}
-
-	# `tb_query_filter_t.flags` is a `uint32_t`.
-	QueryFilterFlags := [].{
-		none = 0.U32
-		reversed = 1.U32
-	}
-
+	## A record storing the cumulative effect of committed `Transfer`s.
+	##
+	## [Official Docs](https://docs.tigerbeetle.com/reference/account/)
 	Account := {
 		id : U128,
 		debits_pending : U128,
@@ -133,9 +124,12 @@ TigerBeetle := [].{
 		}
 
 		Flags := [
-			None,
 			Linked,
+
+			## Mutually exclusive wth `CreditsMustNotExceedDebits`
 			DebitsMustNotExceedCredits,
+
+			## Mutually exclusive wth `DebitsMustNotExceedCredits`
 			CreditsMustNotExceedDebits,
 			History,
 			Imported,
@@ -151,10 +145,9 @@ TigerBeetle := [].{
 
 			build : List(Flags) -> U16
 			build = |flag_list| flag_list.fold(
-				0.U16,
+				none,
 				|acc, flag| acc.bitwise_or(
 					match flag {
-						None => none
 						Linked => linked
 						DebitsMustNotExceedCredits =>
 							debits_must_not_exceed_credits
@@ -169,6 +162,9 @@ TigerBeetle := [].{
 		}
 	}
 
+	## An immutable record of a financial transaction between two accounts.
+	##
+	## [Official Docs](https://docs.tigerbeetle.com/reference/transfer/)
 	Transfer := {
 		id : U128,
 		debit_account_id : U128,
@@ -262,7 +258,6 @@ TigerBeetle := [].{
 		}
 
 		Flags := [
-			None,
 			Linked,
 			Pending,
 			PostPendingTransfer,
@@ -286,10 +281,9 @@ TigerBeetle := [].{
 
 			build : List(Flags) -> U16
 			build = |flag_list| flag_list.fold(
-				0.U16,
+				none,
 				|acc, flag| acc.bitwise_or(
 					match flag {
-						None => none
 						Linked => linked
 						Pending => pending
 						PostPendingTransfer => post_pending_transfer
@@ -305,8 +299,24 @@ TigerBeetle := [].{
 		}
 	}
 
-	# `tb_account_filter_t` — selects the transfers/balances involving one account
-	# for get_account_transfers! and get_account_balances!.
+	## A record storing the `Account`’s balance at a given point in time.
+	##
+	## Only Accounts with the flag `History` set retain historical balances.
+	##
+	## [Official Docs](https://docs.tigerbeetle.com/reference/account-balance/)
+	AccountBalance := {
+		debits_pending : U128,
+		debits_posted : U128,
+		credits_pending : U128,
+		credits_posted : U128,
+		timestamp : U64,
+		_reserved : (U64, U64, U64, U64, U64, U64, U64), # 56 bytes
+	}
+
+	## A record containing the filter parameters for querying the account
+	## transfers and the account historical balances.
+	##
+	## [Official Docs](https://docs.tigerbeetle.com/reference/account-filter/)
 	AccountFilter := {
 		account_id : U128,
 		user_data_128 : U128,
@@ -407,26 +417,35 @@ TigerBeetle := [].{
 			limit,
 		}
 
-		flags : AccountFilter, U32 -> AccountFilter
+		flags : AccountFilter, List(Flags) -> AccountFilter
 		flags = |filter, new_flags| {
 			..filter,
-			flags: new_flags,
+			flags: Flags.build(new_flags),
+		}
+
+		Flags := [Debits, Credits].{
+			none = 0.U32
+			debits = 1.U32
+			credits = 2.U32
+			reversed = 4.U32
+
+			build : List(Flags) -> U32
+			build = |flag_list| flag_list.fold(
+				none,
+				|acc, flag| acc.bitwise_or(
+					match flag {
+						Debits => 1.U32
+						Credits => 2.U32
+					},
+				),
+			)
 		}
 	}
 
-	# `tb_account_balance_t` — a point-in-time balance returned by
-	# get_account_balances! (only for accounts opened with the `history` flag).
-	AccountBalance := {
-		debits_pending : U128,
-		debits_posted : U128,
-		credits_pending : U128,
-		credits_posted : U128,
-		timestamp : U64,
-		_reserved : (U64, U64, U64, U64, U64, U64, U64), # 56 bytes
-	}
-
-	# `tb_query_filter_t` — selects accounts/transfers by their secondary indexes
-	# for query_accounts! and query_transfers!.
+	## A record containing the filter parameters for querying accounts and
+	## querying transfers.
+	##
+	## [Official Docs](https://docs.tigerbeetle.com/reference/query-filter/)
 	QueryFilter := {
 		user_data_128 : U128,
 		user_data_64 : U64,
@@ -437,7 +456,9 @@ TigerBeetle := [].{
 		timestamp_min : U64,
 		timestamp_max : U64,
 		limit : U32,
-		flags : U32,
+
+		## There are currently no valid values for `flags` other than 0
+		_flags : U32,
 	}.{
 		init : () -> QueryFilter
 		init = || {
@@ -449,7 +470,6 @@ TigerBeetle := [].{
 			timestamp_min: 0,
 			timestamp_max: 0,
 			limit: 0,
-			flags: 0,
 		}
 
 		user_data_128 : QueryFilter, U128 -> QueryFilter
@@ -499,14 +519,9 @@ TigerBeetle := [].{
 			..filter,
 			limit,
 		}
-
-		flags : QueryFilter, U32 -> QueryFilter
-		flags = |filter, new_flags| {
-			..filter,
-			flags: new_flags,
-		}
 	}
 
+	## [Official Docs](https://docs.tigerbeetle.com/reference/requests/create_transfers/#result)
 	CreateTransferResult :: {
 		timestamp : U64,
 		status : U32,
@@ -671,6 +686,7 @@ TigerBeetle := [].{
 		]
 	}
 
+	## [Official Docs](https://docs.tigerbeetle.com/reference/requests/create_accounts/#result)
 	CreateAccountResult :: {
 		timestamp : U64,
 		status : U32,
@@ -753,7 +769,9 @@ TigerBeetle := [].{
 		]
 
 	}
-	# Generate a TigerBeetle time-based identifier (host-managed state keeps
-	# these monotonically increasing, even within a single millisecond).
+
+	## Generate a TigerBeetle time-based identifier.
+	##
+	## [Official Docs](https://docs.tigerbeetle.com/coding/data-modeling/#tigerbeetle-time-based-identifiers-recommended)
 	id! : () => U128
 }

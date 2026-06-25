@@ -51,12 +51,12 @@ fn assertSameLayout(comptime Roc: type, comptime Tb: type, comptime name: []cons
 
 // Wired up by host.zig at startup, before any hosted function runs.
 var g_host: ?*abi.RocHost = null;
-var g_gpa: ?std.mem.Allocator = null;
+var g_io: ?std.Io = null;
 
 /// Share the host context with this module. Called once from `platform_main`.
-pub fn init(host: *abi.RocHost, gpa: std.mem.Allocator) void {
+pub fn init(host: *abi.RocHost, io: std.Io) void {
     g_host = host;
-    g_gpa = gpa;
+    g_io = io;
 }
 
 // --- id! (TigerBeetle time-based identifiers) ------------------------------
@@ -77,6 +77,7 @@ const TS48_MASK: u128 = 0xFFFF_FFFF_FFFF; // 48-bit millisecond timestamp
 /// `next` is pure (it owns no clock or RNG) so it can be unit-tested
 /// deterministically; `nextId` below wires in the real clock and RNG.
 const IdState = struct {
+    const Self = @This();
     last_ms: u64 = 0,
     last_random: u128 = 0,
 
@@ -84,7 +85,13 @@ const IdState = struct {
     /// random (from `randomFn`, masked to 80 bits) is drawn only when time moves
     /// forward or the 80-bit random saturates; on the common same-ms path the
     /// random is just incremented by one to stay monotonic.
-    fn next(self: *IdState, now_ms: u64, randomFn: *const fn () u128) u128 {
+    ///
+    /// Accepts `now_ms` and `randomFn` to aid in testing
+    fn next(
+        self: *Self,
+        now_ms: u64,
+        randomFn: *const fn () u128,
+    ) u128 {
         if (now_ms > self.last_ms) {
             // Time advanced: adopt it and pick a fresh random.
             self.last_ms = now_ms;
@@ -104,22 +111,23 @@ const IdState = struct {
     }
 };
 
-var g_id_state: IdState = .{};
-
-/// 128 random bits from the platform RNG; callers mask to the width they need.
-fn randomU128Bits() u128 {
-    const io = std.Io.Threaded.global_single_threaded.io();
+fn randomBits128() u128 {
     var buf = [_]u8{0} ** 16;
-    std.Io.random(io, &buf);
+    std.Io.random(g_io.?, &buf);
     return @bitCast(buf);
 }
 
+fn nowMs() u64 {
+    const now_ns = std.Io.Clock.real.now(g_io.?).toNanoseconds(); // i128 nanos
+    return if (now_ns <= 0) 0 else @intCast(@divFloor(now_ns, 1_000_000));
+}
+
+var g_id_state: IdState = .{};
+
+/// 128 random bits from the platform RNG; callers mask to the width they need.
 /// Hosted function: TigerBeetle.id! — exported as `roc_tb_id` by host.zig.
 pub fn nextId() callconv(.c) u128 {
-    const io = std.Io.Threaded.global_single_threaded.io();
-    const now_ns = std.Io.Clock.real.now(io).toNanoseconds(); // i128 nanos
-    const now_ms: u64 = if (now_ns <= 0) 0 else @intCast(@divFloor(now_ns, 1_000_000));
-    return g_id_state.next(now_ms, &randomU128Bits);
+    return g_id_state.next(nowMs(), &randomBits128);
 }
 
 // Unit tests for the id transition logic. `next` takes its randomness as a
@@ -147,9 +155,9 @@ test "id: monotonic +1 within the same millisecond" {
 test "id: advancing time draws a fresh random and stays ordered" {
     var s: IdState = .{}; // last_ms = 0, so the first call sees time advance
     test_random = 0xAB;
-    const a = s.next(1000, &testRandom);
+    const a = s.next();
     test_random = 0xCD;
-    const b = s.next(1001, &testRandom);
+    const b = s.next();
     try std.testing.expectEqual(@as(u128, 1000), a >> 80);
     try std.testing.expectEqual(@as(u128, 0xAB), a & U80_MASK);
     try std.testing.expectEqual(@as(u128, 1001), b >> 80);
@@ -191,11 +199,6 @@ test "id: timestamp is masked to 48 bits" {
     const id = s.next(huge_ms, &testRandom);
     try std.testing.expectEqual(@as(u128, 0x1234), id >> 80);
 }
-
-// --- client lifecycle ------------------------------------------------------
-
-const cluster_id: [16]u8 = [_]u8{0} ** 16; // local single-node cluster
-const address: []const u8 = "127.0.0.1:3000";
 
 /// TigerBeetle client. API design of TigerBeetle.roc should prevent this from
 /// being accessed before it's initialized, but just in case we've made it an
@@ -288,7 +291,7 @@ fn onCompletion(
         @memcpy(ctx.out[0..n], r[0..n]);
         ctx.out_len = n;
     }
-    ctx.done.post(std.Io.Threaded.global_single_threaded.io());
+    ctx.done.post(g_io.?);
 }
 
 // --- async -> sync submit helper -------------------------------------------
@@ -318,7 +321,9 @@ fn submit(operation: tb.Operation, data: []const u8, out: []u8) u32 {
     // Capture by pointer (`|*c|`), not by value: tb.Client "must remain pinned
     // (stable address) for its lifetime", so submit against the global's storage
     // rather than a transient stack copy.
-    const client: *tb.Client = if (g_tb_client) |*c| c else fatal("failed to initialize client (is `tigerbeetle start` running on 127.0.0.1:3000?)");
+    const client: *tb.Client = if (g_tb_client) |*c| c else fatal(
+        "TigerBeetle client was not initialized in time. This is a bug!",
+    );
 
     var completion = Completion{ .out = out };
     var packet = tb.Packet{
@@ -331,26 +336,13 @@ fn submit(operation: tb.Operation, data: []const u8, out: []u8) u32 {
         .opaque_fields = undefined,
     };
 
-    if (tb.tb_client_submit(client, &packet) != .ok) fatal("tb_client_submit failed (client closed?)");
-    completion.done.waitUncancelable(std.Io.Threaded.global_single_threaded.io());
-    if (completion.status != .ok) fatal("request did not complete OK (see TB_PACKET_STATUS)");
-    return completion.out_len;
-}
+    const submit_status = tb.tb_client_submit(client, &packet);
+    if (submit_status != .ok) fatal("tb_client_submit failed (client closed?)");
 
-/// Decode `src` (the TB C-layout results) into a freshly allocated Roc list,
-/// mapping each element through `convert`. Shared by every create/read response.
-fn decodeList(
-    comptime TbType: type,
-    comptime RocType: type,
-    host: *abi.RocHost,
-    src: []const TbType,
-    comptime convert: fn (TbType) RocType,
-) abi.RocListWith(RocType, false) {
-    const out = abi.RocListWith(RocType, false).allocate(src.len, host);
-    if (out.elements_ptr) |ptr| {
-        for (src, 0..) |elem, i| ptr[i] = convert(elem);
-    }
-    return out;
+    completion.done.waitUncancelable(g_io.?);
+    if (completion.status != .ok) fatal("request did not complete OK (see TB_PACKET_STATUS)");
+
+    return completion.out_len;
 }
 
 /// Submit `operation` carrying `data` and have TB write its results straight into
@@ -367,34 +359,34 @@ fn decodeList(
 /// to pin too much memory, this is the single place to add a conditional shrink —
 /// `allocate` an exact-size list, `@memcpy` `count` elements, decref this one.
 /// Encapsulated here so callers never change.
-fn submitInto(
-    comptime RocType: type,
-    comptime TbType: type,
+fn allocAndSubmit(
+    comptime ResultTypeRoc: type,
+    comptime ResultTypeTb: type,
     host: *abi.RocHost,
     operation: tb.Operation,
     data: []const u8,
     capacity: usize,
-) abi.RocListWith(RocType, false) {
-    comptime if (@sizeOf(RocType) != @sizeOf(TbType) or @alignOf(RocType) != @alignOf(TbType))
+) abi.RocListWith(ResultTypeRoc, false) {
+    const size_match = @sizeOf(ResultTypeRoc) == @sizeOf(ResultTypeTb);
+    const align_match = @alignOf(ResultTypeRoc) == @alignOf(ResultTypeTb);
+    comptime if (!size_match or !align_match)
         @compileError("submitInto requires identical Roc/TB layouts");
 
-    const List = abi.RocListWith(RocType, false);
+    const List = abi.RocListWith(ResultTypeRoc, false);
     if (capacity == 0) return List.empty();
 
     var list = List.allocate(capacity, host);
     const dest: [*]u8 = @ptrCast(list.elements_ptr.?);
-    const n_out = submit(operation, data, dest[0 .. capacity * @sizeOf(RocType)]);
-    list.length = n_out / @sizeOf(RocType);
+    const n_out = submit(
+        operation,
+        data,
+        dest[0 .. capacity * @sizeOf(ResultTypeRoc)],
+    );
+    list.length = n_out / @sizeOf(ResultTypeRoc);
     return list;
 }
 
 // --- create_accounts! / create_transfers! ----------------------------------
-
-// The create_* result elements `{ timestamp, status }`. Unlike the read structs,
-// these don't share TB's C layout — Roc's `status` is a u8 tag, TB's is a u32
-// result code — so create_* still decodes element-by-element via `decodeList`.
-const AccountResultRecord = abi.TigerBeetleCreateAccountsResult;
-const TransferResultRecord = abi.TigerBeetleCreateTransfersResult;
 
 /// Hosted function: TigerBeetle.create_accounts!
 /// List(Account) => List({ status : CreateAccountStatus, timestamp : U64 })
@@ -410,7 +402,7 @@ pub fn createAccounts(
     defer owned.decref(host);
 
     const roc_accounts = owned.items();
-    return submitInto(
+    return allocAndSubmit(
         abi.TigerBeetleCreateAccountResult,
         tb.CreateAccountResult,
         host,
@@ -418,27 +410,6 @@ pub fn createAccounts(
         std.mem.sliceAsBytes(roc_accounts),
         roc_accounts.len,
     );
-
-    // const n = roc_accounts.len;
-    // if (n == 0) return abi.RocListWith(abi.TigerBeetleCreateAccountsResult, false).empty();
-
-    // // Dense results: one tb_create_account_result_t per submitted account.
-    // const results = gpa.alloc(tb.CreateAccountResult, n) catch fatal("out of memory");
-    // defer gpa.free(results);
-    // const n_out = submit(
-    //     .create_accounts,
-    //     std.mem.sliceAsBytes(roc_accounts),
-    //     std.mem.sliceAsBytes(results),
-    // );
-
-    // const count = n_out / @sizeOf(tb.CreateAccountResult);
-    // return decodeList(
-    //     tb.CreateAccountResult,
-    //     abi.TigerBeetleCreateAccountsResult,
-    //     host,
-    //     results[0..count],
-    //     accountResultToRoc,
-    // );
 }
 
 /// Hosted function: TigerBeetle.create_transfers!
@@ -454,7 +425,7 @@ pub fn createTransfers(
     defer owned.decref(host);
 
     const roc_transfers = owned.items();
-    return submitInto(
+    return allocAndSubmit(
         abi.TigerBeetleCreateTransferResult,
         tb.CreateTransferResult,
         host,
@@ -462,32 +433,6 @@ pub fn createTransfers(
         std.mem.sliceAsBytes(roc_transfers),
         roc_transfers.len,
     );
-
-    // const n = roc_transfers.len;
-    // if (n == 0) return abi.RocListWith(
-    //     abi.TigerBeetleCreateTransferResult,
-    //     false,
-    // ).empty();
-
-    // // Dense results: one tb_create_transfer_result_t per submitted transfer.
-    // const results = gpa.alloc(tb.CreateTransferResult, n) catch fatal(
-    //     "out of memory",
-    // );
-    // defer gpa.free(results);
-    // const n_out = submit(
-    //     .create_transfers,
-    //     std.mem.sliceAsBytes(roc_transfers),
-    //     std.mem.sliceAsBytes(results),
-    // );
-
-    // const count = n_out / @sizeOf(tb.CreateTransferResult);
-    // return decodeList(
-    //     tb.CreateTransferResult,
-    //     abi.TigerBeetleCreateTransfersResult,
-    //     host,
-    //     results[0..count],
-    //     transferResultToRoc,
-    // );
 }
 
 // --- lookup_accounts! / lookup_transfers! ----------------------------------
@@ -504,7 +449,7 @@ pub fn lookupAccounts(
     // Ids are already u128 in TB's wire layout and tb.Account matches
     // TigerBeetleAccount, so both request and response are zero-copy.
     const ids = owned.items();
-    return submitInto(
+    return allocAndSubmit(
         abi.TigerBeetleAccount,
         tb.Account,
         host,
@@ -524,7 +469,7 @@ pub fn lookupTransfers(
     defer owned.decref(host);
 
     const ids = owned.items();
-    return submitInto(
+    return allocAndSubmit(
         abi.TigerBeetleTransfer,
         tb.Transfer,
         host,
@@ -548,7 +493,7 @@ pub fn getAccountTransfers(
 ) callconv(.c) abi.RocListWith(abi.TigerBeetleTransfer, false) {
     const host = g_host.?;
     // AccountFilter matches tb.AccountFilter, so pass its bytes straight through.
-    return submitInto(
+    return allocAndSubmit(
         abi.TigerBeetleTransfer,
         tb.Transfer,
         host,
@@ -564,7 +509,7 @@ pub fn getAccountBalances(
     arg0: abi.TigerBeetleAccountFilter,
 ) callconv(.c) abi.RocListWith(abi.TigerBeetleAccountBalance, false) {
     const host = g_host.?;
-    return submitInto(
+    return allocAndSubmit(
         abi.TigerBeetleAccountBalance,
         tb.AccountBalance,
         host,
@@ -583,7 +528,7 @@ pub fn queryAccounts(
 ) callconv(.c) abi.RocListWith(abi.TigerBeetleAccount, false) {
     const host = g_host.?;
     // QueryFilter matches tb.QueryFilter, so pass its bytes straight through.
-    return submitInto(
+    return allocAndSubmit(
         abi.TigerBeetleAccount,
         tb.Account,
         host,
@@ -599,7 +544,7 @@ pub fn queryTransfers(
     arg0: abi.TigerBeetleQueryFilter,
 ) callconv(.c) abi.RocListWith(abi.TigerBeetleTransfer, false) {
     const host = g_host.?;
-    return submitInto(
+    return allocAndSubmit(
         abi.TigerBeetleTransfer,
         tb.Transfer,
         host,
@@ -609,136 +554,13 @@ pub fn queryTransfers(
     );
 }
 
-// --- create_* result decoding ----------------------------------------------
-//
-// Every request and read response now shares TB's C layout and flows through
-// `submitInto` with zero marshaling. Only the create_* responses still need
-// per-element conversion: TB's u32 `status` result code maps to a Roc u8 tag.
-
-fn accountResultToRoc(src: tb.CreateAccountResult) AccountResultRecord {
-    return .{ .timestamp = src.timestamp, .status = accountStatusToRoc(src.status) };
-}
-
-fn transferResultToRoc(src: tb.CreateTransferResult) TransferResultRecord {
-    return .{ .timestamp = src.timestamp, .status = transferStatusToRoc(src.status) };
-}
-
-/// Map a TB account status code to the Roc `CreateAccountStatus` tag. Names line
-/// up 1:1 except TB's `user_data_NNN` vs Roc's `user_dataNNN`.
-fn accountStatusToRoc(status: tb.CreateAccountStatus) abi.TigerBeetleCreateAccountStatus {
-    return switch (status) {
-        .created => .created,
-        .linked_event_failed => .linked_event_failed,
-        .linked_event_chain_open => .linked_event_chain_open,
-        .timestamp_must_be_zero => .timestamp_must_be_zero,
-        .reserved_field => .reserved_field,
-        .reserved_flag => .reserved_flag,
-        .id_must_not_be_zero => .id_must_not_be_zero,
-        .id_must_not_be_int_max => .id_must_not_be_int_max,
-        .flags_are_mutually_exclusive => .flags_are_mutually_exclusive,
-        .debits_pending_must_be_zero => .debits_pending_must_be_zero,
-        .debits_posted_must_be_zero => .debits_posted_must_be_zero,
-        .credits_pending_must_be_zero => .credits_pending_must_be_zero,
-        .credits_posted_must_be_zero => .credits_posted_must_be_zero,
-        .ledger_must_not_be_zero => .ledger_must_not_be_zero,
-        .code_must_not_be_zero => .code_must_not_be_zero,
-        .exists_with_different_flags => .exists_with_different_flags,
-        .exists_with_different_user_data_128 => .exists_with_different_user_data128,
-        .exists_with_different_user_data_64 => .exists_with_different_user_data64,
-        .exists_with_different_user_data_32 => .exists_with_different_user_data32,
-        .exists_with_different_ledger => .exists_with_different_ledger,
-        .exists_with_different_code => .exists_with_different_code,
-        .exists => .exists,
-        .imported_event_expected => .imported_event_expected,
-        .imported_event_not_expected => .imported_event_not_expected,
-        .imported_event_timestamp_out_of_range => .imported_event_timestamp_out_of_range,
-        .imported_event_timestamp_must_not_advance => .imported_event_timestamp_must_not_advance,
-        .imported_event_timestamp_must_not_regress => .imported_event_timestamp_must_not_regress,
-        else => fatal("unexpected create_account status from TigerBeetle"),
-    };
-}
-
-/// Map a TB transfer status code to the Roc `CreateTransferStatus` tag. Names
-/// line up 1:1 except TB's `user_data_NNN` vs Roc's `user_dataNNN`.
-fn transferStatusToRoc(status: tb.CreateTransferStatus) abi.TigerBeetleCreateTransferStatus {
-    return switch (status) {
-        .created => .created,
-        .linked_event_failed => .linked_event_failed,
-        .linked_event_chain_open => .linked_event_chain_open,
-        .timestamp_must_be_zero => .timestamp_must_be_zero,
-        .reserved_flag => .reserved_flag,
-        .id_must_not_be_zero => .id_must_not_be_zero,
-        .id_must_not_be_int_max => .id_must_not_be_int_max,
-        .flags_are_mutually_exclusive => .flags_are_mutually_exclusive,
-        .debit_account_id_must_not_be_zero => .debit_account_id_must_not_be_zero,
-        .debit_account_id_must_not_be_int_max => .debit_account_id_must_not_be_int_max,
-        .credit_account_id_must_not_be_zero => .credit_account_id_must_not_be_zero,
-        .credit_account_id_must_not_be_int_max => .credit_account_id_must_not_be_int_max,
-        .accounts_must_be_different => .accounts_must_be_different,
-        .pending_id_must_be_zero => .pending_id_must_be_zero,
-        .pending_id_must_not_be_zero => .pending_id_must_not_be_zero,
-        .pending_id_must_not_be_int_max => .pending_id_must_not_be_int_max,
-        .pending_id_must_be_different => .pending_id_must_be_different,
-        .timeout_reserved_for_pending_transfer => .timeout_reserved_for_pending_transfer,
-        .ledger_must_not_be_zero => .ledger_must_not_be_zero,
-        .code_must_not_be_zero => .code_must_not_be_zero,
-        .debit_account_not_found => .debit_account_not_found,
-        .credit_account_not_found => .credit_account_not_found,
-        .accounts_must_have_the_same_ledger => .accounts_must_have_the_same_ledger,
-        .transfer_must_have_the_same_ledger_as_accounts => .transfer_must_have_the_same_ledger_as_accounts,
-        .pending_transfer_not_found => .pending_transfer_not_found,
-        .pending_transfer_not_pending => .pending_transfer_not_pending,
-        .pending_transfer_has_different_debit_account_id => .pending_transfer_has_different_debit_account_id,
-        .pending_transfer_has_different_credit_account_id => .pending_transfer_has_different_credit_account_id,
-        .pending_transfer_has_different_ledger => .pending_transfer_has_different_ledger,
-        .pending_transfer_has_different_code => .pending_transfer_has_different_code,
-        .exceeds_pending_transfer_amount => .exceeds_pending_transfer_amount,
-        .pending_transfer_has_different_amount => .pending_transfer_has_different_amount,
-        .pending_transfer_already_posted => .pending_transfer_already_posted,
-        .pending_transfer_already_voided => .pending_transfer_already_voided,
-        .pending_transfer_expired => .pending_transfer_expired,
-        .exists_with_different_flags => .exists_with_different_flags,
-        .exists_with_different_debit_account_id => .exists_with_different_debit_account_id,
-        .exists_with_different_credit_account_id => .exists_with_different_credit_account_id,
-        .exists_with_different_amount => .exists_with_different_amount,
-        .exists_with_different_pending_id => .exists_with_different_pending_id,
-        .exists_with_different_user_data_128 => .exists_with_different_user_data128,
-        .exists_with_different_user_data_64 => .exists_with_different_user_data64,
-        .exists_with_different_user_data_32 => .exists_with_different_user_data32,
-        .exists_with_different_timeout => .exists_with_different_timeout,
-        .exists_with_different_code => .exists_with_different_code,
-        .exists => .exists,
-        .overflows_debits_pending => .overflows_debits_pending,
-        .overflows_credits_pending => .overflows_credits_pending,
-        .overflows_debits_posted => .overflows_debits_posted,
-        .overflows_credits_posted => .overflows_credits_posted,
-        .overflows_debits => .overflows_debits,
-        .overflows_credits => .overflows_credits,
-        .overflows_timeout => .overflows_timeout,
-        .exceeds_credits => .exceeds_credits,
-        .exceeds_debits => .exceeds_debits,
-        .imported_event_expected => .imported_event_expected,
-        .imported_event_not_expected => .imported_event_not_expected,
-        .imported_event_timestamp_out_of_range => .imported_event_timestamp_out_of_range,
-        .imported_event_timestamp_must_not_advance => .imported_event_timestamp_must_not_advance,
-        .imported_event_timestamp_must_not_regress => .imported_event_timestamp_must_not_regress,
-        .imported_event_timestamp_must_postdate_debit_account => .imported_event_timestamp_must_postdate_debit_account,
-        .imported_event_timestamp_must_postdate_credit_account => .imported_event_timestamp_must_postdate_credit_account,
-        .imported_event_timeout_must_be_zero => .imported_event_timeout_must_be_zero,
-        .closing_transfer_must_be_pending => .closing_transfer_must_be_pending,
-        .debit_account_already_closed => .debit_account_already_closed,
-        .credit_account_already_closed => .credit_account_already_closed,
-        .exists_with_different_ledger => .exists_with_different_ledger,
-        .id_already_failed => .id_already_failed,
-        else => fatal("unexpected create_transfer status from TigerBeetle"),
-    };
-}
-
 /// Print a TigerBeetle host-level error to stderr and exit. Used for transport
 /// failures (no cluster, client closed, malformed request) that have no
 /// representation in the per-account result list.
 fn fatal(comptime msg: []const u8) noreturn {
-    const io = std.Io.Threaded.global_single_threaded.io();
-    std.Io.File.stderr().writeStreamingAll(io, "[TigerBeetle] " ++ msg ++ "\n") catch {};
+    std.Io.File.stderr().writeStreamingAll(
+        g_io.?,
+        "[TigerBeetle] " ++ msg ++ "\n",
+    ) catch {};
     std.process.exit(1);
 }

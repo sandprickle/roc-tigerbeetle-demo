@@ -79,14 +79,14 @@ const Stats = struct {
 };
 
 fn run(comptime op: Op, base: std.mem.Allocator, n: usize, iters: usize, warmup: usize) Stats {
+    const io = std.Io.Threaded.global_single_threaded.io();
+
     var counting = Counting{ .child = base };
     const a = counting.allocator();
     var env: abi.RocEnv = .{ .allocator = a, .roc_io = abi.RocIo.default() };
     var host = abi.makeRocHost(&env);
-    tb_host.init(&host, a);
+    tb_host.init(&host, io);
     tb_host.bench_loopback = true;
-
-    const io = std.Io.Threaded.global_single_threaded.io();
 
     var total_ns: u64 = 0;
     var total_allocs: usize = 0;
