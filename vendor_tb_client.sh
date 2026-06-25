@@ -28,7 +28,7 @@ if [[ ! -d "$tb" ]]; then
 fi
 if [[ ! -f "$tb/build.zig" || ! -f "$tb/zig/download.sh" ]]; then
     echo "error: $tb does not look like a tigerbeetle checkout" \
-         "(missing build.zig or zig/download.sh)." >&2
+        "(missing build.zig or zig/download.sh)." >&2
     exit 1
 fi
 
@@ -38,7 +38,7 @@ fi
 zig="$tb/zig/zig"
 if [[ ! -x "$zig" ]] || ! "$zig" version >/dev/null 2>&1; then
     echo "[zig] $zig not ready -> running $tb/zig/download.sh"
-    ( cd "$tb" && ./zig/download.sh )
+    (cd "$tb" && ./zig/download.sh)
 fi
 if [[ ! -x "$zig" ]] || ! "$zig" version >/dev/null 2>&1; then
     echo "error: TigerBeetle's zig is still not runnable at $zig after download." >&2
@@ -52,12 +52,12 @@ echo "[zig] ready: $("$zig" version)"
 if [[ $# -ge 1 ]]; then
     version="$1"
 else
-    version="$(git -C "$tb" tag --list --sort=-version:refname \
-        | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
+    version="$(git -C "$tb" tag --list --sort=-version:refname |
+        grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
 fi
 if [[ -z "$version" ]]; then
     echo "error: could not determine a stable version tag in $tb" \
-         "(pass one explicitly: $0 X.Y.Z)." >&2
+        "(pass one explicitly: $0 X.Y.Z)." >&2
     exit 1
 fi
 echo "[version] stamping client as $version"
@@ -66,11 +66,11 @@ echo "[version] stamping client as $version"
 # -Drelease == ReleaseSafe (the TigerBeetle ethos / our bench baseline). This
 # cross-compiles every platform into src/clients/c/lib/<zig-triple>/.
 echo "[build] $zig build clients:c -Drelease" \
-     "-Dconfig-release=$version -Dconfig-release-client-min=$version"
-( cd "$tb" && "$zig" build clients:c \
+    "-Dconfig-release=$version -Dconfig-release-client-min=$version"
+(cd "$tb" && "$zig" build clients:c \
     -Drelease \
     -Dconfig-release="$version" \
-    -Dconfig-release-client-min="$version" )
+    -Dconfig-release-client-min="$version")
 
 # --- Copy the static archive per Roc-supported target ------------------------
 # Static archive only (what the Roc host links), linux-musl not gnu. arm64win is
@@ -92,11 +92,11 @@ copy_one() {
 }
 
 echo "[copy] vendoring static client libs into platform/targets/"
-copy_one x64mac    x86_64-macos       libtb_client.a
-copy_one arm64mac  aarch64-macos      libtb_client.a
-copy_one x64musl   x86_64-linux-musl  libtb_client.a
+copy_one x64mac x86_64-macos libtb_client.a
+copy_one arm64mac aarch64-macos libtb_client.a
+copy_one x64musl x86_64-linux-musl libtb_client.a
 copy_one arm64musl aarch64-linux-musl libtb_client.a
-copy_one x64win    x86_64-windows     tb_client.lib
+copy_one x64win x86_64-windows tb_client.lib
 echo "  - arm64win skipped (TigerBeetle has no aarch64-windows client)"
 
 echo "[done] vendored TigerBeetle client $version into platform/targets/"
