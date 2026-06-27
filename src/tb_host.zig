@@ -51,12 +51,14 @@ fn assertSameLayout(comptime Roc: type, comptime Tb: type, comptime name: []cons
 
 // Wired up by host.zig at startup, before any hosted function runs.
 var g_host: ?*abi.RocHost = null;
-var g_io: ?std.Io = null;
+var g_io: std.Io = std.Io.Threaded.global_single_threaded.io();
 
 /// Share the host context with this module. Called once from `platform_main`.
-pub fn init(host: *abi.RocHost, io: std.Io) void {
+pub fn init(host: *abi.RocHost, io: ?std.Io) void {
     g_host = host;
-    g_io = io;
+    if (io) |override_io| {
+        g_io = override_io;
+    }
 }
 
 // --- id! (TigerBeetle time-based identifiers) ------------------------------
@@ -113,12 +115,12 @@ const IdState = struct {
 
 fn randomBits128() u128 {
     var buf = [_]u8{0} ** 16;
-    std.Io.random(g_io.?, &buf);
+    std.Io.random(g_io, &buf);
     return @bitCast(buf);
 }
 
 fn nowMs() u64 {
-    const now_ns = std.Io.Clock.real.now(g_io.?).toNanoseconds(); // i128 nanos
+    const now_ns = std.Io.Clock.real.now(g_io).toNanoseconds(); // i128 nanos
     return if (now_ns <= 0) 0 else @intCast(@divFloor(now_ns, 1_000_000));
 }
 
@@ -155,9 +157,9 @@ test "id: monotonic +1 within the same millisecond" {
 test "id: advancing time draws a fresh random and stays ordered" {
     var s: IdState = .{}; // last_ms = 0, so the first call sees time advance
     test_random = 0xAB;
-    const a = s.next();
+    const a = s.next(1000, &testRandom);
     test_random = 0xCD;
-    const b = s.next();
+    const b = s.next(1001, &testRandom);
     try std.testing.expectEqual(@as(u128, 1000), a >> 80);
     try std.testing.expectEqual(@as(u128, 0xAB), a & U80_MASK);
     try std.testing.expectEqual(@as(u128, 1001), b >> 80);
@@ -291,7 +293,7 @@ fn onCompletion(
         @memcpy(ctx.out[0..n], r[0..n]);
         ctx.out_len = n;
     }
-    ctx.done.post(g_io.?);
+    ctx.done.post(g_io);
 }
 
 // --- async -> sync submit helper -------------------------------------------
@@ -339,7 +341,7 @@ fn submit(operation: tb.Operation, data: []const u8, out: []u8) u32 {
     const submit_status = tb.tb_client_submit(client, &packet);
     if (submit_status != .ok) fatal("tb_client_submit failed (client closed?)");
 
-    completion.done.waitUncancelable(g_io.?);
+    completion.done.waitUncancelable(g_io);
     if (completion.status != .ok) fatal("request did not complete OK (see TB_PACKET_STATUS)");
 
     return completion.out_len;
@@ -559,7 +561,7 @@ pub fn queryTransfers(
 /// representation in the per-account result list.
 fn fatal(comptime msg: []const u8) noreturn {
     std.Io.File.stderr().writeStreamingAll(
-        g_io.?,
+        g_io,
         "[TigerBeetle] " ++ msg ++ "\n",
     ) catch {};
     std.process.exit(1);
