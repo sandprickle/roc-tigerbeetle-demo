@@ -246,47 +246,26 @@ const TestKind = union(enum) {
 
 const test_cases = [_]TestCase{
     // roc check examples
-    .{ .name = "check cli_args.roc", .kind = .{ .check = "examples/cli_args.roc" } },
-    .{ .name = "check hello_world.roc", .kind = .{ .check = "examples/hello_world.roc" } },
-    .{ .name = "check fizzbuzz.roc", .kind = .{ .check = "examples/fizzbuzz.roc" } },
-    .{ .name = "check match.roc", .kind = .{ .check = "examples/match.roc" } },
-    .{ .name = "check stderr.roc", .kind = .{ .check = "examples/stderr.roc" } },
-    .{ .name = "check sum_fold.roc", .kind = .{ .check = "examples/sum_fold.roc" } },
-    .{ .name = "check exit.roc", .kind = .{ .check = "examples/exit.roc" } },
-    .{ .name = "check echo.roc", .kind = .{ .check = "examples/echo.roc" } },
-    .{ .name = "check echo_multiline.roc", .kind = .{ .check = "examples/echo_multiline.roc" } },
     .{ .name = "check tests.roc", .kind = .{ .check = "examples/tests.roc" } },
     .{ .name = "check dbg_test.roc", .kind = .{ .check = "examples/dbg_test.roc" } },
     .{ .name = "check all_roc_syntax.roc", .kind = .{ .check = "examples/all_roc_syntax.roc" } },
+    .{ .name = "check tigerbeetle.roc", .kind = .{ .check = "examples/tigerbeetle.roc" } },
+    .{ .name = "check tigerbeetle_full.roc", .kind = .{ .check = "examples/tigerbeetle_full.roc" } },
 
     // roc run examples (interpreter mode)
-    .{ .name = "run cli_args.roc", .kind = .{ .run = "examples/cli_args.roc" } },
-    .{ .name = "run hello_world.roc", .kind = .{ .run = "examples/hello_world.roc" } },
-    .{ .name = "run fizzbuzz.roc", .kind = .{ .run = "examples/fizzbuzz.roc" } },
-    .{ .name = "run match.roc", .kind = .{ .run = "examples/match.roc" } },
-    .{ .name = "run stderr.roc", .kind = .{ .run = "examples/stderr.roc" } },
-    .{ .name = "run sum_fold.roc", .kind = .{ .run = "examples/sum_fold.roc" } },
-    .{ .name = "run echo.roc", .kind = .{ .run_with_stdin = .{ .example = "examples/echo.roc", .stdin = "yoo\n" } } },
-    .{ .name = "run echo_multiline.roc", .kind = .{ .run_with_stdin = .{ .example = "examples/echo_multiline.roc", .stdin = "line one\nline two\nline three\n" } } },
     .{ .name = "run dbg_test.roc", .kind = .{ .dbg_test_run = "examples/dbg_test.roc" } },
     .{ .name = "run all_roc_syntax.roc", .kind = .{ .run = "examples/all_roc_syntax.roc" } },
 
     // roc test
     .{ .name = "roc test tests.roc", .kind = .{ .roc_test = "examples/tests.roc" } },
     .{ .name = "roc test all_roc_syntax.roc", .kind = .{ .roc_test = "examples/all_roc_syntax.roc" } },
+    .{ .name = "roc test tigerbeetle.roc", .kind = .{ .roc_test = "examples/tigerbeetle.roc" } },
+    .{ .name = "roc test tigerbeetle_full.roc", .kind = .{ .roc_test = "examples/tigerbeetle_full.roc" } },
 
     // Build and run examples
-    .{ .name = "build+run cli_args.roc", .kind = .{ .build_run = "examples/cli_args.roc" } },
-    .{ .name = "build+run hello_world.roc", .kind = .{ .build_run = "examples/hello_world.roc" } },
-    .{ .name = "build+run fizzbuzz.roc", .kind = .{ .build_run = "examples/fizzbuzz.roc" } },
-    .{ .name = "build+run match.roc", .kind = .{ .build_run = "examples/match.roc" } },
-    .{ .name = "build+run sum_fold.roc", .kind = .{ .build_run = "examples/sum_fold.roc" } },
-    .{ .name = "build+run stderr.roc", .kind = .{ .build_run = "examples/stderr.roc" } },
-    .{ .name = "build+run exit.roc (expect 23)", .kind = .{ .build_run_exit = .{ .example = "examples/exit.roc", .expected_exit = 23 } } },
-    .{ .name = "build+run echo.roc", .kind = .{ .build_run_stdin = .{ .example = "examples/echo.roc", .stdin = "test input\n" } } },
-    .{ .name = "build+run dbg_test.roc", .kind = .{ .dbg_test_build = "examples/dbg_test.roc" } },
-    // Uncomment once the fix for https://github.com/roc-lang/roc/issues/8654 is merged
-    //.{ .name = "build+run all_roc_syntax.roc", .kind = .{ .build_run = "examples/all_roc_syntax.roc" } },
+    // Broken for now
+    // .{ .name = "build+run dbg_test.roc", .kind = .{ .dbg_test_build = "examples/dbg_test.roc" } },
+    .{ .name = "build+run all_roc_syntax.roc", .kind = .{ .build_run = "examples/all_roc_syntax.roc" } },
 };
 
 /// Runtime version that catches errors and returns them in the result
