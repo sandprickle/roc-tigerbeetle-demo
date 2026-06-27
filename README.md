@@ -10,13 +10,17 @@ Thanks Luke!
 ## Requirements
 
 - [Zig](https://ziglang.org/download/) 0.16.0 or later
-- [Roc](https://www.roc-lang.org/) (for bundling)
+- [TigerBeetle](https://tigerbeetle.com)
+  - Make sure you can run a cluster version 0.17.8 or later
+  - Clone source repo so you can build client lib
+- [Roc](https://www.roc-lang.org/)
 
-## Examples
+## Get Started
 
-Run examples with interpreter: `roc examples/<name>.roc`
-
-Build standalone executable: `roc build examples/<name>.roc`
+1. Clone the TigerBeetle source repo
+2. Set `ROC_TB_TIGERBEETLE_REPO` to the path of the TigerBeetle source repo, then run `./vendor_tb_client.sh` to build the client lib and copy the artifacts to `platform/targets`.
+3. Build the host using `zig build -Doptimize=ReleaseSafe`
+4. Run or build+run the examples using `roc examples/<name>.roc` or `roc build examples/<name>.roc`
 
 ## Testing
 
@@ -68,7 +72,6 @@ This creates a `.tar.zst` bundle containing all `.roc` files and prebuilt host l
 | x64win    | `platform/targets/x64win/host.lib`     |
 | x64musl   | `platform/targets/x64musl/libhost.a`   |
 | arm64mac  | `platform/targets/arm64mac/libhost.a`  |
-| arm64win  | `platform/targets/arm64win/host.lib`   |
 | arm64musl | `platform/targets/arm64musl/libhost.a` |
 
 Linux musl targets include statically linked C runtime files (`crt1.o`, `libc.a`) for standalone executables.
