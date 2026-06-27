@@ -2,4 +2,4 @@
 
 set -euo pipefail
 
-roc glue ../oss/roc/src/glue/src/ZigGlue.roc ./src/ ./platform/main.roc
+"$ROC_BIN" glue "$ROC_DIR"/src/glue/src/ZigGlue.roc ./src/ ./platform/main.roc
