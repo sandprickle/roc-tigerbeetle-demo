@@ -37,13 +37,11 @@ demo! = |tb| {
 		Account.init({ id: id_a, ledger, code: 10 }).flags([History]),
 		Account.init({ id: id_b, ledger, code: 10 }).flags([History]),
 	]
+
+	Stdout.line!("Accounts: ${Str.inspect(accounts)}")
 	for result in tb.create_accounts!(accounts) {
 		Stdout.line!(
-			match result.status() {
-				Created => "account created"
-				Exists => "account exists"
-				_ => "account error"
-			},
+			"Account: ${result.timestamp().to_str()} ${Str.inspect(result.status())}",
 		)
 	}
 
@@ -60,17 +58,11 @@ demo! = |tb| {
 			},
 		).code(10),
 	]
+	Stdout.line!("Transfers:")
+	Stdout.line!("${Str.inspect(transfers)}")
 	for result in tb.create_transfers!(transfers) {
 		Stdout.line!(
-			match result.status() {
-				Created => "transfer created"
-				DebitAccountNotFound => "debit account not found"
-				CreditAccountNotFound => "credit account not found"
-				ExceedsCredits => "exceeds credits"
-				ExceedsDebits => "exceeds debits"
-				Exists => "transfer exists"
-				_ => "transfer error"
-			},
+			"Transfer: ${result.timestamp().to_str()} ${Str.inspect(result.status())}",
 		)
 	}
 

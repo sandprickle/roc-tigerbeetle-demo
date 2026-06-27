@@ -566,27 +566,35 @@ comptime {
         if (@sizeOf(TigerBeetleCreateAccountResult) != 16) @compileError("TigerBeetleCreateAccountResult size mismatch");
         if (@alignOf(TigerBeetleCreateAccountResult) != 8) @compileError("TigerBeetleCreateAccountResult alignment mismatch");
     }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(TigerBeetleCreateAccountResult) != 16) @compileError("TigerBeetleCreateAccountResult size mismatch");
+        if (@alignOf(TigerBeetleCreateAccountResult) != 8) @compileError("TigerBeetleCreateAccountResult alignment mismatch");
+    }
 }
 
 /// Element type for TigerBeetle.Account
 pub const TigerBeetleAccount = extern struct {
-    id: u128,
-    debits_pending: u128,
-    debits_posted: u128,
     credits_pending: u128,
     credits_posted: u128,
+    debits_pending: u128,
+    debits_posted: u128,
+    id: u128,
     user_data_128: u128,
+    timestamp: u64,
     user_data_64: u64,
-    user_data_32: u32,
-    _pad0: [4]u8,
     ledger: u32,
+    reserved: u32,
+    user_data_32: u32,
     code: u16,
     flags: u16,
-    timestamp: u64,
 };
 
 comptime {
     if (@sizeOf(usize) == 8) {
+        if (@sizeOf(TigerBeetleAccount) != 128) @compileError("TigerBeetleAccount size mismatch");
+        if (@alignOf(TigerBeetleAccount) != 16) @compileError("TigerBeetleAccount alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
         if (@sizeOf(TigerBeetleAccount) != 128) @compileError("TigerBeetleAccount size mismatch");
         if (@alignOf(TigerBeetleAccount) != 16) @compileError("TigerBeetleAccount alignment mismatch");
     }
@@ -604,27 +612,35 @@ comptime {
         if (@sizeOf(TigerBeetleCreateTransferResult) != 16) @compileError("TigerBeetleCreateTransferResult size mismatch");
         if (@alignOf(TigerBeetleCreateTransferResult) != 8) @compileError("TigerBeetleCreateTransferResult alignment mismatch");
     }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(TigerBeetleCreateTransferResult) != 16) @compileError("TigerBeetleCreateTransferResult size mismatch");
+        if (@alignOf(TigerBeetleCreateTransferResult) != 8) @compileError("TigerBeetleCreateTransferResult alignment mismatch");
+    }
 }
 
 /// Element type for TigerBeetle.Transfer
 pub const TigerBeetleTransfer = extern struct {
-    id: u128,
-    debit_account_id: u128,
-    credit_account_id: u128,
     amount: u128,
+    credit_account_id: u128,
+    debit_account_id: u128,
+    id: u128,
     pending_id: u128,
     user_data_128: u128,
+    timestamp: u64,
     user_data_64: u64,
-    user_data_32: u32,
-    timeout: u32,
     ledger: u32,
+    timeout: u32,
+    user_data_32: u32,
     code: u16,
     flags: u16,
-    timestamp: u64,
 };
 
 comptime {
     if (@sizeOf(usize) == 8) {
+        if (@sizeOf(TigerBeetleTransfer) != 128) @compileError("TigerBeetleTransfer size mismatch");
+        if (@alignOf(TigerBeetleTransfer) != 16) @compileError("TigerBeetleTransfer alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
         if (@sizeOf(TigerBeetleTransfer) != 128) @compileError("TigerBeetleTransfer size mismatch");
         if (@alignOf(TigerBeetleTransfer) != 16) @compileError("TigerBeetleTransfer alignment mismatch");
     }
@@ -634,14 +650,14 @@ comptime {
 pub const TigerBeetleAccountFilter = extern struct {
     account_id: u128,
     user_data_128: u128,
+    timestamp_max: u64,
+    timestamp_min: u64,
     user_data_64: u64,
+    flags: u32,
+    limit: u32,
     user_data_32: u32,
     code: u16,
-    _pad0: [58]u8,
-    timestamp_min: u64,
-    timestamp_max: u64,
-    limit: u32,
-    flags: u32,
+    reserved: TigerBeetleReserved58,
 };
 
 comptime {
@@ -649,10 +665,14 @@ comptime {
         if (@sizeOf(TigerBeetleAccountFilter) != 128) @compileError("TigerBeetleAccountFilter size mismatch");
         if (@alignOf(TigerBeetleAccountFilter) != 16) @compileError("TigerBeetleAccountFilter alignment mismatch");
     }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(TigerBeetleAccountFilter) != 128) @compileError("TigerBeetleAccountFilter size mismatch");
+        if (@alignOf(TigerBeetleAccountFilter) != 16) @compileError("TigerBeetleAccountFilter alignment mismatch");
+    }
 }
 
-/// Element type for __AnonStruct20
-pub const __AnonStruct20 = extern struct {
+/// Element type for TigerBeetle.Reserved58
+pub const TigerBeetleReserved58 = extern struct {
     _0: u16,
     _1: u16,
     _10: u16,
@@ -686,8 +706,12 @@ pub const __AnonStruct20 = extern struct {
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(__AnonStruct20) != 58) @compileError("__AnonStruct20 size mismatch");
-        if (@alignOf(__AnonStruct20) != 2) @compileError("__AnonStruct20 alignment mismatch");
+        if (@sizeOf(TigerBeetleReserved58) != 58) @compileError("TigerBeetleReserved58 size mismatch");
+        if (@alignOf(TigerBeetleReserved58) != 2) @compileError("TigerBeetleReserved58 alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(TigerBeetleReserved58) != 58) @compileError("TigerBeetleReserved58 size mismatch");
+        if (@alignOf(TigerBeetleReserved58) != 2) @compileError("TigerBeetleReserved58 alignment mismatch");
     }
 }
 
@@ -706,10 +730,14 @@ comptime {
         if (@sizeOf(TigerBeetleAccountBalance) != 128) @compileError("TigerBeetleAccountBalance size mismatch");
         if (@alignOf(TigerBeetleAccountBalance) != 16) @compileError("TigerBeetleAccountBalance alignment mismatch");
     }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(TigerBeetleAccountBalance) != 128) @compileError("TigerBeetleAccountBalance size mismatch");
+        if (@alignOf(TigerBeetleAccountBalance) != 16) @compileError("TigerBeetleAccountBalance alignment mismatch");
+    }
 }
 
-/// Element type for __AnonStruct23
-pub const __AnonStruct23 = extern struct {
+/// Element type for TigerBeetle.Reserved56
+pub const TigerBeetleReserved56 = extern struct {
     _0: u64,
     _1: u64,
     _2: u64,
@@ -721,8 +749,12 @@ pub const __AnonStruct23 = extern struct {
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(__AnonStruct23) != 56) @compileError("__AnonStruct23 size mismatch");
-        if (@alignOf(__AnonStruct23) != 8) @compileError("__AnonStruct23 alignment mismatch");
+        if (@sizeOf(TigerBeetleReserved56) != 56) @compileError("TigerBeetleReserved56 size mismatch");
+        if (@alignOf(TigerBeetleReserved56) != 8) @compileError("TigerBeetleReserved56 alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(TigerBeetleReserved56) != 56) @compileError("TigerBeetleReserved56 size mismatch");
+        if (@alignOf(TigerBeetleReserved56) != 8) @compileError("TigerBeetleReserved56 alignment mismatch");
     }
 }
 
@@ -733,11 +765,11 @@ pub const TigerBeetleQueryFilter = extern struct {
     user_data_32: u32,
     ledger: u32,
     code: u16,
-    _pad0: [6]u8,
+    reserved: TigerBeetleReserved6,
     timestamp_min: u64,
     timestamp_max: u64,
     limit: u32,
-    flags: u32,
+    _pad0: [4]u8,
 };
 
 comptime {
@@ -745,10 +777,14 @@ comptime {
         if (@sizeOf(TigerBeetleQueryFilter) != 64) @compileError("TigerBeetleQueryFilter size mismatch");
         if (@alignOf(TigerBeetleQueryFilter) != 16) @compileError("TigerBeetleQueryFilter alignment mismatch");
     }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(TigerBeetleQueryFilter) != 64) @compileError("TigerBeetleQueryFilter size mismatch");
+        if (@alignOf(TigerBeetleQueryFilter) != 16) @compileError("TigerBeetleQueryFilter alignment mismatch");
+    }
 }
 
-/// Element type for __AnonStruct25
-pub const __AnonStruct25 = extern struct {
+/// Element type for TigerBeetle.Reserved6
+pub const TigerBeetleReserved6 = extern struct {
     _0: u16,
     _1: u16,
     _2: u16,
@@ -756,21 +792,32 @@ pub const __AnonStruct25 = extern struct {
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(__AnonStruct25) != 6) @compileError("__AnonStruct25 size mismatch");
-        if (@alignOf(__AnonStruct25) != 2) @compileError("__AnonStruct25 alignment mismatch");
+        if (@sizeOf(TigerBeetleReserved6) != 6) @compileError("TigerBeetleReserved6 size mismatch");
+        if (@alignOf(TigerBeetleReserved6) != 2) @compileError("TigerBeetleReserved6 alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(TigerBeetleReserved6) != 6) @compileError("TigerBeetleReserved6 size mismatch");
+        if (@alignOf(TigerBeetleReserved6) != 2) @compileError("TigerBeetleReserved6 alignment mismatch");
     }
 }
 
-/// Element type for __AnonStruct28
-pub const __AnonStruct28 = extern struct {
+/// Element type for __AnonStruct29
+pub const __AnonStruct29 = if (@sizeOf(usize) == 4) extern struct {
+    cluster_id: u128,
+    addresses: RocStr,
+} else extern struct {
     cluster_id: u128,
     addresses: RocStr,
 };
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(__AnonStruct28) != 48) @compileError("__AnonStruct28 size mismatch");
-        if (@alignOf(__AnonStruct28) != 16) @compileError("__AnonStruct28 alignment mismatch");
+        if (@sizeOf(__AnonStruct29) != 48) @compileError("__AnonStruct29 size mismatch");
+        if (@alignOf(__AnonStruct29) != 16) @compileError("__AnonStruct29 alignment mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(__AnonStruct29) != 32) @compileError("__AnonStruct29 size mismatch");
+        if (@alignOf(__AnonStruct29) != 16) @compileError("__AnonStruct29 alignment mismatch");
     }
 }
 
@@ -780,19 +827,45 @@ pub const TryTag = enum(u8) {
     Ok = 1,
 };
 
+/// Payload union for Try.
+pub const TryPayload = extern union {
+    err: AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected,
+    ok: void,
+};
+
 /// Tag union: Try
-pub const Try = extern struct {
-    payload: extern union {
-        err: AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected,
-        ok: void,
-    },
+pub const Try = if (@sizeOf(usize) == 4) extern struct {
+    payload: [1]u8 align(1),
     tag: TryTag,
+    pub fn payload_err(self: *const @This()) AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected {
+        const ptr: *const AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected = @ptrCast(@alignCast(&self.payload));
+        return ptr.*;
+    }
+    pub fn payload_ok(self: *const @This()) void {
+        const ptr: *const void = @ptrCast(@alignCast(&self.payload));
+        return ptr.*;
+    }
+} else extern struct {
+    payload: TryPayload,
+    tag: TryTag,
+    pub fn payload_err(self: *const @This()) AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected {
+        return self.payload.err;
+    }
+    pub fn payload_ok(self: *const @This()) void {
+        return self.payload.ok;
+    }
 };
 
 comptime {
     if (@sizeOf(usize) == 8) {
         if (@sizeOf(Try) != 2) @compileError("Try size mismatch");
         if (@alignOf(Try) != 1) @compileError("Try alignment mismatch");
+        if (@offsetOf(Try, "tag") != 1) @compileError("Try tag offset mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(Try) != 2) @compileError("Try size mismatch");
+        if (@alignOf(Try) != 1) @compileError("Try alignment mismatch");
+        if (@offsetOf(Try, "tag") != 1) @compileError("Try tag offset mismatch");
     }
 }
 
@@ -953,24 +1026,22 @@ pub fn increfTigerBeetleTransfer(value: TigerBeetleTransfer, amount: isize) void
 
 /// Recursively decrement Roc-owned fields in TigerBeetleAccountFilter.
 pub fn decrefTigerBeetleAccountFilter(value: TigerBeetleAccountFilter, roc_host: *RocHost) void {
-    _ = value;
-    _ = roc_host;
+    decrefTigerBeetleReserved58(value.reserved, roc_host);
 }
 
 /// Increment Roc-owned fields in TigerBeetleAccountFilter.
 pub fn increfTigerBeetleAccountFilter(value: TigerBeetleAccountFilter, amount: isize) void {
-    _ = value;
-    _ = amount;
+    increfTigerBeetleReserved58(value.reserved, amount);
 }
 
-/// Recursively decrement Roc-owned fields in __AnonStruct20.
-pub fn decref__AnonStruct20(value: __AnonStruct20, roc_host: *RocHost) void {
+/// Recursively decrement Roc-owned fields in TigerBeetleReserved58.
+pub fn decrefTigerBeetleReserved58(value: TigerBeetleReserved58, roc_host: *RocHost) void {
     _ = value;
     _ = roc_host;
 }
 
-/// Increment Roc-owned fields in __AnonStruct20.
-pub fn incref__AnonStruct20(value: __AnonStruct20, amount: isize) void {
+/// Increment Roc-owned fields in TigerBeetleReserved58.
+pub fn increfTigerBeetleReserved58(value: TigerBeetleReserved58, amount: isize) void {
     _ = value;
     _ = amount;
 }
@@ -987,38 +1058,36 @@ pub fn increfTigerBeetleAccountBalance(value: TigerBeetleAccountBalance, amount:
     _ = amount;
 }
 
-/// Recursively decrement Roc-owned fields in __AnonStruct23.
-pub fn decref__AnonStruct23(value: __AnonStruct23, roc_host: *RocHost) void {
+/// Recursively decrement Roc-owned fields in TigerBeetleReserved56.
+pub fn decrefTigerBeetleReserved56(value: TigerBeetleReserved56, roc_host: *RocHost) void {
     _ = value;
     _ = roc_host;
 }
 
-/// Increment Roc-owned fields in __AnonStruct23.
-pub fn incref__AnonStruct23(value: __AnonStruct23, amount: isize) void {
+/// Increment Roc-owned fields in TigerBeetleReserved56.
+pub fn increfTigerBeetleReserved56(value: TigerBeetleReserved56, amount: isize) void {
     _ = value;
     _ = amount;
 }
 
 /// Recursively decrement Roc-owned fields in TigerBeetleQueryFilter.
 pub fn decrefTigerBeetleQueryFilter(value: TigerBeetleQueryFilter, roc_host: *RocHost) void {
-    _ = value;
-    _ = roc_host;
+    decrefTigerBeetleReserved6(value.reserved, roc_host);
 }
 
 /// Increment Roc-owned fields in TigerBeetleQueryFilter.
 pub fn increfTigerBeetleQueryFilter(value: TigerBeetleQueryFilter, amount: isize) void {
-    _ = value;
-    _ = amount;
+    increfTigerBeetleReserved6(value.reserved, amount);
 }
 
-/// Recursively decrement Roc-owned fields in __AnonStruct25.
-pub fn decref__AnonStruct25(value: __AnonStruct25, roc_host: *RocHost) void {
+/// Recursively decrement Roc-owned fields in TigerBeetleReserved6.
+pub fn decrefTigerBeetleReserved6(value: TigerBeetleReserved6, roc_host: *RocHost) void {
     _ = value;
     _ = roc_host;
 }
 
-/// Increment Roc-owned fields in __AnonStruct25.
-pub fn incref__AnonStruct25(value: __AnonStruct25, amount: isize) void {
+/// Increment Roc-owned fields in TigerBeetleReserved6.
+pub fn increfTigerBeetleReserved6(value: TigerBeetleReserved6, amount: isize) void {
     _ = value;
     _ = amount;
 }
@@ -1027,7 +1096,7 @@ pub fn incref__AnonStruct25(value: __AnonStruct25, amount: isize) void {
 pub fn decrefTry(value: Try, roc_host: *RocHost) void {
     switch (value.tag) {
         .Err => {
-            decrefAddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected(value.payload.err, roc_host);
+            decrefAddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected(value.payload_err(), roc_host);
         },
         .Ok => {},
     }
@@ -1037,7 +1106,7 @@ pub fn decrefTry(value: Try, roc_host: *RocHost) void {
 pub fn increfTry(value: Try, amount: isize) void {
     switch (value.tag) {
         .Err => {
-            increfAddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected(value.payload.err, amount);
+            increfAddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected(value.payload_err(), amount);
         },
         .Ok => {},
     }
@@ -1046,36 +1115,22 @@ pub fn increfTry(value: Try, amount: isize) void {
 /// Recursively decrement Roc-owned payloads in AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected.
 pub fn decrefAddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected(value: AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected, roc_host: *RocHost) void {
     _ = roc_host;
-    switch (value.tag) {
-        .AddressInvalid => {},
-        .AddressLimitExceeded => {},
-        .NetworkSubsystem => {},
-        .OutOfMemory => {},
-        .SystemResources => {},
-        .Unexpected => {},
-    }
+    _ = value;
 }
 
 /// Increment Roc-owned payloads in AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected.
 pub fn increfAddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected(value: AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected, amount: isize) void {
     _ = amount;
-    switch (value.tag) {
-        .AddressInvalid => {},
-        .AddressLimitExceeded => {},
-        .NetworkSubsystem => {},
-        .OutOfMemory => {},
-        .SystemResources => {},
-        .Unexpected => {},
-    }
+    _ = value;
 }
 
-/// Recursively decrement Roc-owned fields in __AnonStruct28.
-pub fn decref__AnonStruct28(value: __AnonStruct28, roc_host: *RocHost) void {
+/// Recursively decrement Roc-owned fields in __AnonStruct29.
+pub fn decref__AnonStruct29(value: __AnonStruct29, roc_host: *RocHost) void {
     value.addresses.decref(roc_host);
 }
 
-/// Increment Roc-owned fields in __AnonStruct28.
-pub fn incref__AnonStruct28(value: __AnonStruct28, amount: isize) void {
+/// Increment Roc-owned fields in __AnonStruct29.
+pub fn incref__AnonStruct29(value: __AnonStruct29, amount: isize) void {
     value.addresses.incref(amount);
 }
 

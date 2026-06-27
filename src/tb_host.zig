@@ -398,6 +398,12 @@ pub fn createAccounts(
     abi.TigerBeetleCreateAccountResult,
     false,
 ) {
+    for (arg0.items()) |acct| {
+        std.log.debug(
+            "[HOST] Creating account: {}\n",
+            .{acct},
+        );
+    }
     const host = g_host.?;
     // const gpa = g_gpa.?;
     var owned = arg0;
@@ -422,6 +428,12 @@ pub fn createTransfers(
     abi.TigerBeetleCreateTransferResult,
     false,
 ) {
+    for (arg0.items()) |acct| {
+        std.log.debug(
+            "[HOST] Creating transfer: {}\n",
+            .{acct},
+        );
+    }
     const host = g_host.?;
     var owned = arg0;
     defer owned.decref(host);

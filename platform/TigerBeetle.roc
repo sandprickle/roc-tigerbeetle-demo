@@ -69,7 +69,7 @@ TigerBeetle := [].{
 		user_data_128 : U128,
 		user_data_64 : U64,
 		user_data_32 : U32,
-		_reserved : U32,
+		reserved : Reserved4,
 		ledger : U32,
 		code : U16,
 		flags : U16,
@@ -89,6 +89,7 @@ TigerBeetle := [].{
 			user_data_128: 0,
 			user_data_64: 0,
 			user_data_32: 0,
+			reserved: 0,
 			ledger,
 			code,
 			flags: 0,
@@ -310,7 +311,7 @@ TigerBeetle := [].{
 		credits_pending : U128,
 		credits_posted : U128,
 		timestamp : U64,
-		_reserved : (U64, U64, U64, U64, U64, U64, U64), # 56 bytes
+		_reserved : Reserved56,
 	}
 
 	## A record containing the filter parameters for querying the account
@@ -323,38 +324,7 @@ TigerBeetle := [].{
 		user_data_64 : U64,
 		user_data_32 : U32,
 		code : U16,
-		# 58 bytes
-		_reserved : (
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-			U16,
-		),
+		reserved : Reserved58,
 		timestamp_min : U64,
 		timestamp_max : U64,
 		limit : U32,
@@ -369,6 +339,7 @@ TigerBeetle := [].{
 			user_data_64: 0,
 			user_data_32: 0,
 			code: 0,
+			reserved: 0,
 			timestamp_min: 0,
 			timestamp_max: 0,
 			limit: 0,
@@ -452,7 +423,7 @@ TigerBeetle := [].{
 		user_data_32 : U32,
 		ledger : U32,
 		code : U16,
-		_reserved : (U16, U16, U16), # 6 bytes
+		reserved : Reserved6,
 		timestamp_min : U64,
 		timestamp_max : U64,
 		limit : U32,
@@ -467,6 +438,7 @@ TigerBeetle := [].{
 			user_data_32: 0,
 			ledger: 0,
 			code: 0,
+			reserved: 0,
 			timestamp_min: 0,
 			timestamp_max: 0,
 			limit: 0,
@@ -519,13 +491,14 @@ TigerBeetle := [].{
 			..filter,
 			limit,
 		}
+
 	}
 
 	## [Official Docs](https://docs.tigerbeetle.com/reference/requests/create_transfers/#result)
 	CreateTransferResult :: {
 		timestamp : U64,
 		status : U32,
-		_reserved : U32,
+		_reserved : Reserved4,
 	}.{
 		status_created = 0xFFFFFFFF.U32
 		status_exists = 46.U32
@@ -538,6 +511,9 @@ TigerBeetle := [].{
 
 		timestamp : CreateTransferResult -> U64
 		timestamp = |result| result.timestamp
+
+		status_int : CreateTransferResult -> U32
+		status_int = |result| result.status
 
 		status : CreateTransferResult -> Status
 		status = |result| match result.status {
@@ -690,7 +666,7 @@ TigerBeetle := [].{
 	CreateAccountResult :: {
 		timestamp : U64,
 		status : U32,
-		_reserved : U32,
+		_reserved : Reserved4,
 	}.{
 		status_created = 0xFFFFFFFF.U32
 		status_exists = 21.U32
@@ -703,6 +679,9 @@ TigerBeetle := [].{
 
 		timestamp : CreateAccountResult -> U64
 		timestamp = |result| result.timestamp
+
+		status_int : CreateAccountResult -> U32
+		status_int = |result| result.status
 
 		status : CreateAccountResult -> Status
 		status = |result| match result.status {
@@ -767,7 +746,104 @@ TigerBeetle := [].{
 			ImportedEventTimestampMustNotAdvance,
 			ImportedEventTimestampMustNotRegress,
 		]
+	}
 
+	## 6 byte reserved field that must always be 0
+	Reserved4 :: U32.{
+		from_numeral : Numeral -> Try(Reserved4, [InvalidNumeral(Str), ..])
+		from_numeral = |numeral| match U8.from_numeral(numeral) {
+			Ok(0) => Ok(Reserved4.(0))
+			_ => Err(InvalidNumeral("reserved must be 0"))
+		}
+	}
+
+	## 6 byte reserved field that must always be 0
+	Reserved6 :: (U16, U16, U16).{
+		from_numeral : Numeral -> Try(Reserved6, [InvalidNumeral(Str), ..])
+		from_numeral = |numeral| match U8.from_numeral(numeral) {
+			Ok(0) => Ok(Reserved6.(0, 0, 0))
+			_ => Err(InvalidNumeral("reserved must be 0"))
+		}
+	}
+
+	## 56 byte reserved field that must always be 0
+	Reserved56 :: (U64, U64, U64, U64, U64, U64, U64).{
+		from_numeral : Numeral -> Try(Reserved56, [InvalidNumeral(Str), ..])
+		from_numeral = |numeral| match U8.from_numeral(numeral) {
+			Ok(0) => Ok(Reserved56.(0, 0, 0, 0, 0, 0, 0))
+			_ => Err(InvalidNumeral("reserved must be 0"))
+		}
+	}
+
+	## 58 byte reserved field that must always be 0
+	Reserved58 :: (
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+		U16,
+	).{
+		from_numeral : Numeral -> Try(Reserved58, [InvalidNumeral(Str), ..])
+		from_numeral = |numeral| match U8.from_numeral(numeral) {
+			Ok(0) => Ok(
+				Reserved58.(
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+					0,
+				),
+			)
+			_ => Err(InvalidNumeral("reserved must be 0"))
+		}
 	}
 
 	## Generate a TigerBeetle time-based identifier.
