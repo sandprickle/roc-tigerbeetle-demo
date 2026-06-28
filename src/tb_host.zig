@@ -17,38 +17,6 @@ const builtin = @import("builtin");
 const abi = @import("roc_platform_abi.zig");
 const tb = @import("tb_client.zig");
 
-// Roc now lays out nominal/opaque record types (declared with `:=` / `::`) in
-// declaration order, reordering fields only when it reduces padding. That makes
-// these Roc records byte-for-byte identical to TigerBeetle's C client structs, so
-// the host can hand a Roc value straight to TB and read TB's results straight
-// back into a Roc list with no per-field marshaling. The assertions below pin
-// that equivalence: if either side's layout ever drifts, the build fails loudly
-// here instead of silently corrupting memory at runtime.
-//
-// CreateAccountsResult / CreateTransfersResult are deliberately excluded — their
-// `status` is a u8 Roc tag vs TB's u32 result code, so they never match and keep
-// going through the explicit converters below.
-comptime {
-    assertSameLayout(abi.TigerBeetleAccount, tb.Account, "Account");
-    assertSameLayout(abi.TigerBeetleTransfer, tb.Transfer, "Transfer");
-    assertSameLayout(abi.TigerBeetleAccountFilter, tb.AccountFilter, "AccountFilter");
-    assertSameLayout(abi.TigerBeetleAccountBalance, tb.AccountBalance, "AccountBalance");
-    assertSameLayout(abi.TigerBeetleQueryFilter, tb.QueryFilter, "QueryFilter");
-}
-
-/// Compile error unless `Roc` and `Tb` have identical size and alignment — the
-/// precondition for every cross-type cast and in-place result decode in this file.
-fn assertSameLayout(comptime Roc: type, comptime Tb: type, comptime name: []const u8) void {
-    if (@sizeOf(Roc) != @sizeOf(Tb)) @compileError(std.fmt.comptimePrint(
-        "TigerBeetle.{s}: Roc size {d} != TB size {d}",
-        .{ name, @sizeOf(Roc), @sizeOf(Tb) },
-    ));
-    if (@alignOf(Roc) != @alignOf(Tb)) @compileError(std.fmt.comptimePrint(
-        "TigerBeetle.{s}: Roc align {d} != TB align {d}",
-        .{ name, @alignOf(Roc), @alignOf(Tb) },
-    ));
-}
-
 // Wired up by host.zig at startup, before any hosted function runs.
 var g_host: ?*abi.RocHost = null;
 var g_io: std.Io = std.Io.Threaded.global_single_threaded.io();
@@ -207,9 +175,13 @@ test "id: timestamp is masked to 48 bits" {
 /// optional so we can fail gracefully if the unthinkable happens.
 var g_tb_client: ?tb.Client = null;
 
+const TryClientInit = abi.TryType28;
+const TryClientInitTag = abi.TryType28Tag;
+const TryClientInitPayload = abi.TryType28Payload;
+
 pub fn initClient(
     args: abi.TigerBeetleClientInitArgs,
-) callconv(.c) abi.Try {
+) callconv(.c) TryClientInit {
     // The `addresses` RocStr is owned by this hosted call; release it on exit.
     // TB parses the addresses during init and does not retain the pointer.
     const addresses = args.addresses;
@@ -234,27 +206,27 @@ pub fn initClient(
     if (status != .success) g_tb_client = null;
 
     return switch (status) {
-        .success => tryOk(),
-        .unexpected => tryErr(.unexpected),
-        .out_of_memory => tryErr(.out_of_memory),
-        .address_invalid => tryErr(.address_invalid),
-        .address_limit_exceeded => tryErr(.address_limit_exceeded),
-        .system_resources => tryErr(.system_resources),
-        .network_subsystem => tryErr(.network_subsystem),
+        .success => clientInitOk(),
+        .unexpected => clientInitErr(.unexpected),
+        .out_of_memory => clientInitErr(.out_of_memory),
+        .address_invalid => clientInitErr(.address_invalid),
+        .address_limit_exceeded => clientInitErr(.address_limit_exceeded),
+        .system_resources => clientInitErr(.system_resources),
+        .network_subsystem => clientInitErr(.network_subsystem),
         else => fatal("Unknown status"),
     };
 }
 
-fn tryOk() abi.Try {
-    return abi.Try{ .payload = .{ .ok = {} }, .tag = abi.TryTag.Ok };
+fn clientInitOk() TryClientInit {
+    return TryClientInit{ .payload = .{ .ok = .{} }, .tag = TryClientInitTag.Ok };
 }
 
 const TigerBeetleClientInitErr =
     abi.AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected;
-fn tryErr(err: TigerBeetleClientInitErr) abi.Try {
-    return abi.Try{
+fn clientInitErr(err: TigerBeetleClientInitErr) TryClientInit {
+    return TryClientInit{
         .payload = .{ .err = err },
-        .tag = abi.TryTag.Err,
+        .tag = TryClientInitTag.Err,
     };
 }
 /// Tear down the shared client, if one was created. Called at process exit.
@@ -577,4 +549,78 @@ fn fatal(comptime msg: []const u8) noreturn {
         "[TigerBeetle] " ++ msg ++ "\n",
     ) catch {};
     std.process.exit(1);
+}
+
+comptime {
+    const reserved_types = [_]struct { t: type, size: comptime_int }{
+        .{ .t = abi.TigerBeetleReserved6, .size = 6 },
+        .{ .t = abi.TigerBeetleReserved56, .size = 56 },
+        .{ .t = abi.TigerBeetleReserved58, .size = 58 },
+    };
+
+    for (reserved_types) |res| {
+        const reference = [res.size]u8;
+
+        if (@sizeOf(res.t) != @sizeOf(reference)) {
+            @compileError(std.fmt.comptimePrint(
+                "{} size mismatch. Expected {d}, got {d}",
+                .{ res.t, @sizeOf(reference), @sizeOf(res.t) },
+            ));
+        }
+    }
+}
+
+// Roc now lays out nominal/opaque record types (declared with `:=` / `::`) in
+// declaration order, reordering fields only when it reduces padding. That makes
+// these Roc records byte-for-byte identical to TigerBeetle's C client structs, so
+// the host can hand a Roc value straight to TB and read TB's results straight
+// back into a Roc list with no per-field marshaling. The assertions below pin
+// that equivalence: if either side's layout ever drifts, the build fails loudly
+// here instead of silently corrupting memory at runtime.
+//
+// CreateAccountsResult / CreateTransfersResult are deliberately excluded — their
+// `status` is a u8 Roc tag vs TB's u32 result code, so they never match and keep
+// going through the explicit converters below.
+comptime {
+    assertSameStructLayout(abi.TigerBeetleAccount, tb.Account, "Account");
+    assertSameStructLayout(abi.TigerBeetleTransfer, tb.Transfer, "Transfer");
+    assertSameStructLayout(abi.TigerBeetleAccountFilter, tb.AccountFilter, "AccountFilter");
+    assertSameStructLayout(abi.TigerBeetleAccountBalance, tb.AccountBalance, "AccountBalance");
+    assertSameStructLayout(abi.TigerBeetleQueryFilter, tb.QueryFilter, "QueryFilter");
+}
+
+/// Compile error unless `Roc` and `Tb` have identical size and alignment — the
+/// precondition for every cross-type cast and in-place result decode in this file.
+fn assertSameStructLayout(comptime Roc: type, comptime Tb: type, comptime name: []const u8) void {
+    const total_size_mismatch = @sizeOf(Roc) != @sizeOf(Tb);
+    if (total_size_mismatch) @compileError(std.fmt.comptimePrint(
+        "TigerBeetle.{s}: Roc size {d} != TB size {d}",
+        .{ name, @sizeOf(Roc), @sizeOf(Tb) },
+    ));
+
+    const total_align_mismatch = @alignOf(Roc) != @alignOf(Tb);
+    if (total_align_mismatch) @compileError(std.fmt.comptimePrint(
+        "TigerBeetle.{s}: Roc align {d} != TB align {d}",
+        .{ name, @alignOf(Roc), @alignOf(Tb) },
+    ));
+
+    if (total_size_mismatch or total_align_mismatch) return;
+
+    const tb_fields = @typeInfo(Tb).@"struct".fields;
+    const roc_fields = @typeInfo(Roc).@"struct".fields;
+
+    for (tb_fields, roc_fields) |tb_field, roc_field| {
+        const tb_size = @sizeOf(tb_field.type);
+        const roc_size = @sizeOf(roc_field.type);
+
+        if (tb_size != roc_size) @compileError(std.fmt.comptimePrint(
+            \\
+            \\TigerBeetle.{s}.{s}:
+            \\    Roc name: {s}
+            \\    Roc size {d} != TB size {d}
+            \\
+        ,
+            .{ name, tb_field.name, roc_field.name, roc_size, tb_size },
+        ));
+    }
 }

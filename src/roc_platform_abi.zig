@@ -117,7 +117,7 @@ pub fn allocateBox(
 
 /// Decrement a pointer-aligned boxed payload with no Roc refcounted values.
 pub fn decrefBox(data_ptr: ?*anyopaque, roc_host: *RocHost) void {
-    decrefBoxWith(data_ptr, @alignOf(usize), null, roc_host);
+    decrefBoxWith(data_ptr, @alignOf(usize), false, null, roc_host);
 }
 
 /// Increment a boxed function closure.
@@ -129,7 +129,7 @@ pub fn increfErasedCallable(callable: RocErasedCallable, amount: isize) void {
 /// Decrement a boxed function closure and run its capture drop callback on final release.
 pub fn decrefErasedCallable(callable: RocErasedCallable, roc_host: *RocHost) void {
     const data = callable orelse return;
-    decrefBoxWith(@ptrCast(data), roc_erased_callable_payload_alignment, &dropErasedCallablePayload, roc_host);
+    decrefBoxWith(@ptrCast(data), roc_erased_callable_payload_alignment, false, &dropErasedCallablePayload, roc_host);
 }
 
 fn dropErasedCallablePayload(data_ptr: ?*anyopaque, roc_host: *RocHost) callconv(.c) void {
@@ -142,9 +142,16 @@ fn dropErasedCallablePayload(data_ptr: ?*anyopaque, roc_host: *RocHost) callconv
 }
 
 /// Decrement a boxed payload and run payload teardown when this is the final ref.
+///
+/// `payload_contains_refcounted` must match the value passed to `allocateBox`:
+/// it determines the box header size, and is independent of whether a
+/// `payload_decref` teardown callback is supplied. A host resource handle such
+/// as `Box(U64)` holding a raw pointer has `payload_contains_refcounted = false`
+/// even when it provides a teardown callback to free the underlying resource.
 pub fn decrefBoxWith(
     data_ptr: ?*anyopaque,
     payload_alignment: usize,
+    payload_contains_refcounted: bool,
     payload_decref: ?RocBoxPayloadDecref,
     roc_host: *RocHost,
 ) void {
@@ -155,20 +162,23 @@ pub fn decrefBoxWith(
     const prev = @atomicRmw(isize, rc, .Sub, 1, .monotonic);
     if (prev == 1) {
         if (payload_decref) |callback| callback(data_ptr, roc_host);
-        freeBoxAllocation(data, payload_alignment, payload_decref != null, roc_host);
+        freeBoxAllocation(data, payload_alignment, payload_contains_refcounted, roc_host);
     }
 }
 
 /// Free a boxed payload allocation immediately after running payload teardown.
+///
+/// See `decrefBoxWith` for the meaning of `payload_contains_refcounted`.
 pub fn freeBoxWith(
     data_ptr: ?*anyopaque,
     payload_alignment: usize,
+    payload_contains_refcounted: bool,
     payload_decref: ?RocBoxPayloadDecref,
     roc_host: *RocHost,
 ) void {
     const data = boxDataPtr(data_ptr) orelse return;
     if (payload_decref) |callback| callback(data_ptr, roc_host);
-    freeBoxAllocation(data, payload_alignment, payload_decref != null, roc_host);
+    freeBoxAllocation(data, payload_alignment, payload_contains_refcounted, roc_host);
 }
 
 /// Return true when a boxed payload data pointer has exactly one live ref.
@@ -574,19 +584,19 @@ comptime {
 
 /// Element type for TigerBeetle.Account
 pub const TigerBeetleAccount = extern struct {
-    credits_pending: u128,
-    credits_posted: u128,
+    id: u128,
     debits_pending: u128,
     debits_posted: u128,
-    id: u128,
+    credits_pending: u128,
+    credits_posted: u128,
     user_data_128: u128,
-    timestamp: u64,
     user_data_64: u64,
-    ledger: u32,
-    reserved: u32,
     user_data_32: u32,
+    reserved: u32,
+    ledger: u32,
     code: u16,
     flags: u16,
+    timestamp: u64,
 };
 
 comptime {
@@ -620,19 +630,19 @@ comptime {
 
 /// Element type for TigerBeetle.Transfer
 pub const TigerBeetleTransfer = extern struct {
-    amount: u128,
-    credit_account_id: u128,
-    debit_account_id: u128,
     id: u128,
+    debit_account_id: u128,
+    credit_account_id: u128,
+    amount: u128,
     pending_id: u128,
     user_data_128: u128,
-    timestamp: u64,
     user_data_64: u64,
-    ledger: u32,
-    timeout: u32,
     user_data_32: u32,
+    timeout: u32,
+    ledger: u32,
     code: u16,
     flags: u16,
+    timestamp: u64,
 };
 
 comptime {
@@ -650,14 +660,14 @@ comptime {
 pub const TigerBeetleAccountFilter = extern struct {
     account_id: u128,
     user_data_128: u128,
-    timestamp_max: u64,
-    timestamp_min: u64,
     user_data_64: u64,
-    flags: u32,
-    limit: u32,
     user_data_32: u32,
     code: u16,
     reserved: TigerBeetleReserved58,
+    timestamp_min: u64,
+    timestamp_max: u64,
+    limit: u32,
+    flags: u32,
 };
 
 comptime {
@@ -801,8 +811,8 @@ comptime {
     }
 }
 
-/// Element type for __AnonStruct29
-pub const __AnonStruct29 = if (@sizeOf(usize) == 4) extern struct {
+/// Element type for __AnonStruct30
+pub const __AnonStruct30 = if (@sizeOf(usize) == 4) extern struct {
     cluster_id: u128,
     addresses: RocStr,
 } else extern struct {
@@ -812,60 +822,53 @@ pub const __AnonStruct29 = if (@sizeOf(usize) == 4) extern struct {
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(__AnonStruct29) != 48) @compileError("__AnonStruct29 size mismatch");
-        if (@alignOf(__AnonStruct29) != 16) @compileError("__AnonStruct29 alignment mismatch");
+        if (@sizeOf(__AnonStruct30) != 48) @compileError("__AnonStruct30 size mismatch");
+        if (@alignOf(__AnonStruct30) != 16) @compileError("__AnonStruct30 alignment mismatch");
     }
     if (@sizeOf(usize) == 4) {
-        if (@sizeOf(__AnonStruct29) != 32) @compileError("__AnonStruct29 size mismatch");
-        if (@alignOf(__AnonStruct29) != 16) @compileError("__AnonStruct29 alignment mismatch");
+        if (@sizeOf(__AnonStruct30) != 32) @compileError("__AnonStruct30 size mismatch");
+        if (@alignOf(__AnonStruct30) != 16) @compileError("__AnonStruct30 alignment mismatch");
     }
 }
 
 /// Tag discriminant for Try.
-pub const TryTag = enum(u8) {
+pub const TryType28Tag = enum(u8) {
     Err = 0,
     Ok = 1,
 };
 
 /// Payload union for Try.
-pub const TryPayload = extern union {
+pub const TryType28Payload = extern union {
     err: AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected,
-    ok: void,
+    ok: [0]u8,
 };
 
 /// Tag union: Try
-pub const Try = if (@sizeOf(usize) == 4) extern struct {
+pub const TryType28 = if (@sizeOf(usize) == 4) extern struct {
     payload: [1]u8 align(1),
-    tag: TryTag,
+    tag: TryType28Tag,
     pub fn payload_err(self: *const @This()) AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected {
         const ptr: *const AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected = @ptrCast(@alignCast(&self.payload));
         return ptr.*;
     }
-    pub fn payload_ok(self: *const @This()) void {
-        const ptr: *const void = @ptrCast(@alignCast(&self.payload));
-        return ptr.*;
-    }
 } else extern struct {
-    payload: TryPayload,
-    tag: TryTag,
+    payload: TryType28Payload,
+    tag: TryType28Tag,
     pub fn payload_err(self: *const @This()) AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected {
         return self.payload.err;
-    }
-    pub fn payload_ok(self: *const @This()) void {
-        return self.payload.ok;
     }
 };
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(Try) != 2) @compileError("Try size mismatch");
-        if (@alignOf(Try) != 1) @compileError("Try alignment mismatch");
-        if (@offsetOf(Try, "tag") != 1) @compileError("Try tag offset mismatch");
+        if (@sizeOf(TryType28) != 2) @compileError("TryType28 size mismatch");
+        if (@alignOf(TryType28) != 1) @compileError("TryType28 alignment mismatch");
+        if (@offsetOf(TryType28, "tag") != 1) @compileError("TryType28 tag offset mismatch");
     }
     if (@sizeOf(usize) == 4) {
-        if (@sizeOf(Try) != 2) @compileError("Try size mismatch");
-        if (@alignOf(Try) != 1) @compileError("Try alignment mismatch");
-        if (@offsetOf(Try, "tag") != 1) @compileError("Try tag offset mismatch");
+        if (@sizeOf(TryType28) != 2) @compileError("TryType28 size mismatch");
+        if (@alignOf(TryType28) != 1) @compileError("TryType28 alignment mismatch");
+        if (@offsetOf(TryType28, "tag") != 1) @compileError("TryType28 tag offset mismatch");
     }
 }
 
@@ -878,6 +881,47 @@ pub const AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrS
     system_resources = 4,
     unexpected = 5,
 };
+
+/// Tag discriminant for Try.
+pub const TryType36Tag = enum(u8) {
+    Err = 0,
+    Ok = 1,
+};
+
+/// Payload union for Try.
+pub const TryType36Payload = extern union {
+    err: i32,
+    ok: [0]u8,
+};
+
+/// Tag union: Try
+pub const TryType36 = if (@sizeOf(usize) == 4) extern struct {
+    payload: [4]u8 align(4),
+    tag: TryType36Tag,
+    pub fn payload_err(self: *const @This()) i32 {
+        const ptr: *const i32 = @ptrCast(@alignCast(&self.payload));
+        return ptr.*;
+    }
+} else extern struct {
+    payload: TryType36Payload,
+    tag: TryType36Tag,
+    pub fn payload_err(self: *const @This()) i32 {
+        return self.payload.err;
+    }
+};
+
+comptime {
+    if (@sizeOf(usize) == 8) {
+        if (@sizeOf(TryType36) != 8) @compileError("TryType36 size mismatch");
+        if (@alignOf(TryType36) != 4) @compileError("TryType36 alignment mismatch");
+        if (@offsetOf(TryType36, "tag") != 4) @compileError("TryType36 tag offset mismatch");
+    }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(TryType36) != 8) @compileError("TryType36 size mismatch");
+        if (@alignOf(TryType36) != 4) @compileError("TryType36 alignment mismatch");
+        if (@offsetOf(TryType36, "tag") != 4) @compileError("TryType36 tag offset mismatch");
+    }
+}
 
 /// Arguments for Stderr.line!
 /// Roc signature: Str => {}
@@ -1092,8 +1136,8 @@ pub fn increfTigerBeetleReserved6(value: TigerBeetleReserved6, amount: isize) vo
     _ = amount;
 }
 
-/// Recursively decrement Roc-owned payloads in Try.
-pub fn decrefTry(value: Try, roc_host: *RocHost) void {
+/// Recursively decrement Roc-owned payloads in TryType28.
+pub fn decrefTryType28(value: TryType28, roc_host: *RocHost) void {
     switch (value.tag) {
         .Err => {
             decrefAddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected(value.payload_err(), roc_host);
@@ -1102,8 +1146,8 @@ pub fn decrefTry(value: Try, roc_host: *RocHost) void {
     }
 }
 
-/// Increment Roc-owned payloads in Try.
-pub fn increfTry(value: Try, amount: isize) void {
+/// Increment Roc-owned payloads in TryType28.
+pub fn increfTryType28(value: TryType28, amount: isize) void {
     switch (value.tag) {
         .Err => {
             increfAddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected(value.payload_err(), amount);
@@ -1115,23 +1159,55 @@ pub fn increfTry(value: Try, amount: isize) void {
 /// Recursively decrement Roc-owned payloads in AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected.
 pub fn decrefAddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected(value: AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected, roc_host: *RocHost) void {
     _ = roc_host;
-    _ = value;
+    switch (value.tag) {
+        .AddressInvalid => {},
+        .AddressLimitExceeded => {},
+        .NetworkSubsystem => {},
+        .OutOfMemory => {},
+        .SystemResources => {},
+        .Unexpected => {},
+    }
 }
 
 /// Increment Roc-owned payloads in AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected.
 pub fn increfAddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected(value: AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected, amount: isize) void {
     _ = amount;
-    _ = value;
+    switch (value.tag) {
+        .AddressInvalid => {},
+        .AddressLimitExceeded => {},
+        .NetworkSubsystem => {},
+        .OutOfMemory => {},
+        .SystemResources => {},
+        .Unexpected => {},
+    }
 }
 
-/// Recursively decrement Roc-owned fields in __AnonStruct29.
-pub fn decref__AnonStruct29(value: __AnonStruct29, roc_host: *RocHost) void {
+/// Recursively decrement Roc-owned fields in __AnonStruct30.
+pub fn decref__AnonStruct30(value: __AnonStruct30, roc_host: *RocHost) void {
     value.addresses.decref(roc_host);
 }
 
-/// Increment Roc-owned fields in __AnonStruct29.
-pub fn incref__AnonStruct29(value: __AnonStruct29, amount: isize) void {
+/// Increment Roc-owned fields in __AnonStruct30.
+pub fn incref__AnonStruct30(value: __AnonStruct30, amount: isize) void {
     value.addresses.incref(amount);
+}
+
+/// Recursively decrement Roc-owned payloads in TryType36.
+pub fn decrefTryType36(value: TryType36, roc_host: *RocHost) void {
+    _ = roc_host;
+    switch (value.tag) {
+        .Err => {},
+        .Ok => {},
+    }
+}
+
+/// Increment Roc-owned payloads in TryType36.
+pub fn increfTryType36(value: TryType36, amount: isize) void {
+    _ = amount;
+    switch (value.tag) {
+        .Err => {},
+        .Ok => {},
+    }
 }
 
 // =============================================================================
@@ -1188,7 +1264,7 @@ pub extern fn roc_tb_get_account_transfers(arg0: TigerBeetleAccountFilter) callc
 
 /// Hosted symbol for TigerBeetle.Client.init!
 /// Roc signature: { addresses : Str, cluster_id : U128 } => Try(TigerBeetle.Client, [AddressInvalid, AddressLimitExceeded, NetworkSubsystem, OutOfMemory, SystemResources, Unexpected])
-pub extern fn roc_tb_client_init(arg0: TigerBeetleClientInitArgs) callconv(.c) Try;
+pub extern fn roc_tb_client_init(arg0: TigerBeetleClientInitArgs) callconv(.c) TryType28;
 
 /// Hosted symbol for TigerBeetle.Client.lookup_accounts!
 /// Roc signature: TigerBeetle.Client, List(U128) => List(TigerBeetle.Account)

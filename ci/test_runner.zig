@@ -251,6 +251,7 @@ const test_cases = [_]TestCase{
     .{ .name = "check all_roc_syntax.roc", .kind = .{ .check = "examples/all_roc_syntax.roc" } },
     .{ .name = "check tigerbeetle.roc", .kind = .{ .check = "examples/tigerbeetle.roc" } },
     .{ .name = "check tigerbeetle_full.roc", .kind = .{ .check = "examples/tigerbeetle_full.roc" } },
+    .{ .name = "check integration_test.roc", .kind = .{ .check = "examples/integration_test.roc" } },
 
     // roc run examples (interpreter mode)
     .{ .name = "run dbg_test.roc", .kind = .{ .dbg_test_run = "examples/dbg_test.roc" } },

@@ -74,6 +74,8 @@ TigerBeetle := [].{
 		code : U16,
 		flags : U16,
 		timestamp : U64,
+		# Opt in to declaration ordering
+		_ : {},
 	}.{
 		init : {
 			id : U128,
@@ -180,6 +182,8 @@ TigerBeetle := [].{
 		code : U16,
 		flags : U16,
 		timestamp : U64,
+		# Opt in to declaration ordering
+		_ : {},
 	}.{
 		init : {
 			id : U128,
@@ -329,6 +333,8 @@ TigerBeetle := [].{
 		timestamp_max : U64,
 		limit : U32,
 		flags : U32,
+		# Opt in to declaration ordering
+		_ : {},
 	}.{
 		init : {
 			account_id : U128,
@@ -748,7 +754,7 @@ TigerBeetle := [].{
 		]
 	}
 
-	## 6 byte reserved field that must always be 0
+	## 4 byte reserved field that must always be 0
 	Reserved4 :: U32.{
 		from_numeral : Numeral -> Try(Reserved4, [InvalidNumeral(Str), ..])
 		from_numeral = |numeral| match U8.from_numeral(numeral) {
@@ -776,71 +782,11 @@ TigerBeetle := [].{
 	}
 
 	## 58 byte reserved field that must always be 0
-	Reserved58 :: (
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-		U16,
-	).{
+	Reserved58 :: (U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16).{
 		from_numeral : Numeral -> Try(Reserved58, [InvalidNumeral(Str), ..])
 		from_numeral = |numeral| match U8.from_numeral(numeral) {
 			Ok(0) => Ok(
-				Reserved58.(
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-					0,
-				),
+				Reserved58.(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
 			)
 			_ => Err(InvalidNumeral("reserved must be 0"))
 		}
