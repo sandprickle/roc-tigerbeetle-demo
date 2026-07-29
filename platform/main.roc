@@ -1,6 +1,6 @@
 platform ""
 	requires {
-		main! : List(Str) => Try({}, [Exit(I32)])
+		main! : List(Str) => Try({}, [Exit(I32), ..])
 	}
 	exposes [Stdout, Stderr, Stdin, Utc, TigerBeetle]
 	packages {}
@@ -22,6 +22,7 @@ platform ""
 		"roc_tb_id": TigerBeetle.id!,
 	}
 	targets: {
+		inputs_dir: "targets/",
 		x64mac: { inputs: ["libhost.a", "libtb_client.a", app] },
 		arm64mac: { inputs: ["libhost.a", "libtb_client.a", app] },
 		x64musl: { inputs: ["crt1.o", "libhost.a", "libtb_client.a", app, "libc.a"] },
@@ -42,5 +43,9 @@ main_for_host! = |args| {
 	match result {
 		Ok({}) => 0
 		Err(Exit(code)) => code
+		Err(other) => {
+			_ = Stderr.line!("ERROR: ${Str.inspect(other)}")
+			-1
+		}
 	}
 }
