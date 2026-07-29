@@ -1,3 +1,5 @@
+import Host
+
 TigerBeetle := [].{
 	Client :: {}.{
 
@@ -55,6 +57,18 @@ TigerBeetle := [].{
 				..,
 			],
 		)
+		init! = |opts|
+			Host.tb_client_init!(opts).map_err(
+				|e| match e {
+					Unexpected => Unexpected
+					OutOfMemory => OutOfMemory
+					AddressInvalid => AddressInvalid
+					AddressLimitExceeded => AddressLimitExceeded
+					SystemResources => SystemResources
+					NetworkSubsystem => NetworkSubsystem
+				},
+			)
+
 	}
 
 	## A record storing the cumulative effect of committed `Transfer`s.

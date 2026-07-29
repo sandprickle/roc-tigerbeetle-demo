@@ -18,7 +18,7 @@ platform ""
 		"roc_tb_get_account_balances": TigerBeetle.Client.get_account_balances!,
 		"roc_tb_query_accounts": TigerBeetle.Client.query_accounts!,
 		"roc_tb_query_transfers": TigerBeetle.Client.query_transfers!,
-		"roc_tb_client_init": TigerBeetle.Client.init!,
+		"roc_tb_client_init": Host.tb_client_init!,
 		"roc_tb_id": TigerBeetle.id!,
 	}
 	targets: {
@@ -27,7 +27,6 @@ platform ""
 		x64musl: { inputs: ["crt1.o", "libhost.a", "libtb_client.a", app, "libc.a"] },
 		arm64musl: { inputs: ["crt1.o", "libhost.a", "libtb_client.a", app, "libc.a"] },
 		x64win: { inputs: ["host.lib", "tb_client.lib", app] },
-		# arm64win: { inputs: ["host.lib", app] },  # no TB aarch64-windows client
 	}
 
 import Stdout
