@@ -4,11 +4,13 @@ set -euxo pipefail
 # Recreate a fresh single-replica cluster and run it on 127.0.0.1:3000
 # (cluster 0) — matching the address/cluster hardcoded in src/tb_host.zig.
 #
-# Requires a 0.17.x `tigerbeetle` on PATH to match the vendored client lib at
-# platform/targets/arm64mac/libtb_client.a (override with TIGERBEETLE=/path/...).
+# Uses the server vendored by ./vendor_tb_client.sh at tigerbeetle-bin/tigerbeetle,
+# which is built from the same TB commit as the vendored client libs (both are
+# unstamped 65535.0.0, so they must match; see platform/targets/TB_COMMIT).
+# Override with TIGERBEETLE=/path/to/tigerbeetle.
 # --development lets it format/start without Direct IO (needed on macOS) and
 # uses smaller cache/batch sizes.
-tb="${TIGERBEETLE:-tigerbeetle}"
+tb="${TIGERBEETLE:-$(cd "$(dirname "$0")" && pwd)/tigerbeetle-bin/tigerbeetle}"
 
 rm -rf ./0_0.tigerbeetle
 

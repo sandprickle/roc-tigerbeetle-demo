@@ -3,10 +3,10 @@ app [main!] { pf: platform "../platform/main.roc" }
 import pf.Stdout
 import pf.Stderr
 import pf.TigerBeetle as Tb exposing [
-	Transfer,
 	Account,
 	AccountFilter,
 	QueryFilter,
+	Transfer,
 ]
 
 # Exercises every TigerBeetle hosted function against a live cluster on
@@ -34,8 +34,18 @@ demo! = |tb| {
 
 	# Open two accounts with the `history` flag so balance snapshots are kept.
 	accounts = [
-		Account.init({ id: id_a, ledger, code: 10 }).flags([History]),
-		Account.init({ id: id_b, ledger, code: 10 }).flags([History]),
+		Account.{
+			id: id_a,
+			ledger,
+			code: 10,
+			flags: [History] |> Tb.Account.Flags.build,
+		},
+		Account.{
+			id: id_b,
+			ledger,
+			code: 10,
+			flags: [History] |> Tb.Account.Flags.build,
+		},
 	]
 
 	Stdout.line!("Accounts: ${Str.inspect(accounts)}")
@@ -48,15 +58,14 @@ demo! = |tb| {
 	# Move 100 from A to B.
 	transfer_id = Tb.id!()
 	transfers = [
-		Transfer.init(
-			{
-				id: transfer_id,
-				debit_account_id: id_a,
-				credit_account_id: id_b,
-				amount: 100,
-				ledger,
-			},
-		).code(10),
+		Transfer.{
+			id: transfer_id,
+			debit_account_id: id_a,
+			credit_account_id: id_b,
+			amount: 100,
+			ledger,
+			code: 10,
+		},
 	]
 	Stdout.line!("Transfers:")
 	Stdout.line!("${Str.inspect(transfers)}")
@@ -81,9 +90,12 @@ demo! = |tb| {
 	}
 
 	# Every transfer involving account A (debits or credits).
-	a_filter = AccountFilter.init({ account_id: id_a })
-		.limit(10)
-		.flags([Debits, Credits])
+	a_filter = AccountFilter.{
+		account_id: id_a,
+		limit: 10,
+		flags: [Debits, Credits]
+			|> Tb.AccountFilter.Flags.build,
+	}
 	Stdout.line!("get_account_transfers -> ${tb.get_account_transfers!(a_filter).len().to_str()}")
 
 	# Balance snapshots for account A.
@@ -94,7 +106,7 @@ demo! = |tb| {
 	}
 
 	# Secondary-index queries by ledger + code.
-	q = QueryFilter.init().ledger(ledger).code(10).limit(10)
+	q = QueryFilter.{ ledger, code: 10, limit: 10 }
 	Stdout.line!("query_accounts -> ${tb.query_accounts!(q).len().to_str()}")
 	Stdout.line!("query_transfers -> ${tb.query_transfers!(q).len().to_str()}")
 

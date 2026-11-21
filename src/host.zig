@@ -12,7 +12,7 @@ pub const std_options: std.Options = .{
 /// allocation — it captures a stack trace on every alloc (see the marshal
 /// microbench: ~3.4 µs/alloc vs ~19 ns for a fast allocator). So use it only in
 /// Debug; release builds use the fast general-purpose allocator.
-const use_debug_allocator = builtin.mode == .Debug;
+const use_debug_allocator = builtin.mode == .debug;
 const HostAllocator = if (use_debug_allocator) std.heap.DebugAllocator(.{}) else void;
 
 /// Host environment. Embeds `abi.RocEnv` so the Roc runtime sees a pointer
@@ -159,7 +159,7 @@ comptime {
         @export(&tb_host.getAccountBalances, .{ .name = "roc_tb_get_account_balances", .visibility = .hidden });
         @export(&tb_host.queryAccounts, .{ .name = "roc_tb_query_accounts", .visibility = .hidden });
         @export(&tb_host.queryTransfers, .{ .name = "roc_tb_query_transfers", .visibility = .hidden });
-        @export(&tb_host.initClient, .{ .name = "roc_tb_client_init", .visibility = .hidden });
+        @export(&tb_host.initClientC, .{ .name = "roc_tb_client_init", .visibility = .hidden });
         @export(&tb_host.nextId, .{ .name = "roc_tb_id", .visibility = .hidden });
 
         @export(&hostAlloc, .{ .name = "roc_alloc", .visibility = .hidden });

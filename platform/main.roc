@@ -2,24 +2,30 @@ platform ""
 	requires {
 		main! : List(Str) => Try({}, [Exit(I32), ..])
 	}
-	exposes [Stdout, Stderr, Stdin, Utc, TigerBeetle]
+	exposes [
+		Stderr,
+		Stdin,
+		Stdout,
+		TigerBeetle,
+		Utc,
+	]
 	packages {}
 	provides { "roc_main": main_for_host! }
 	hosted {
+		"roc_host_posix_time": Host.posix_time!,
 		"roc_stderr_line": Stderr.line!,
 		"roc_stdin_line": Stdin.line!,
 		"roc_stdout_line": Stdout.line!,
-		"roc_host_posix_time": Host.posix_time!,
+		"roc_tb_client_init": TigerBeetle.Client.init!,
 		"roc_tb_create_accounts": TigerBeetle.Client.create_accounts!,
 		"roc_tb_create_transfers": TigerBeetle.Client.create_transfers!,
+		"roc_tb_get_account_balances": TigerBeetle.Client.get_account_balances!,
+		"roc_tb_get_account_transfers": TigerBeetle.Client.get_account_transfers!,
+		"roc_tb_id": TigerBeetle.id!,
 		"roc_tb_lookup_accounts": TigerBeetle.Client.lookup_accounts!,
 		"roc_tb_lookup_transfers": TigerBeetle.Client.lookup_transfers!,
-		"roc_tb_get_account_transfers": TigerBeetle.Client.get_account_transfers!,
-		"roc_tb_get_account_balances": TigerBeetle.Client.get_account_balances!,
 		"roc_tb_query_accounts": TigerBeetle.Client.query_accounts!,
 		"roc_tb_query_transfers": TigerBeetle.Client.query_transfers!,
-		"roc_tb_client_init": Host.tb_client_init!,
-		"roc_tb_id": TigerBeetle.id!,
 	}
 	targets: {
 		inputs_dir: "targets/",
@@ -45,7 +51,7 @@ main_for_host! = |args| {
 		Err(Exit(code)) => code
 		Err(other) => {
 			_ = Stderr.line!("ERROR: ${Str.inspect(other)}")
-			-1
+			1
 		}
 	}
 }

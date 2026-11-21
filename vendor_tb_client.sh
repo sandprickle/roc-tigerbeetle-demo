@@ -1,17 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build TigerBeetle's C client (release-stamped) and vendor the static archive
-# for each Roc-supported target into platform/targets/.
+# Build TigerBeetle's C client and server from whatever commit the local TB
+# checkout has at HEAD, vendor the client static archive for each Roc-supported
+# target into platform/targets/, and copy the matching server binary to
+# tigerbeetle-bin/tigerbeetle (used by start_tb.sh).
 #
 # The path to a local TigerBeetle checkout must be in $ROC_TB_TIGERBEETLE_REPO.
+# This script never moves that checkout; check out the commit you want first.
 #
-#   ROC_TB_TIGERBEETLE_REPO=~/src/oss/tigerbeetle ./vendor_tb_client.sh [VERSION]
+#   ROC_TB_TIGERBEETLE_REPO=~/src/oss/tigerbeetle ./vendor_tb_client.sh
 #
-# VERSION (optional) overrides the version the client is stamped with. When
-# omitted, the highest stable semver git tag in the TB repo is used. The stamp
-# must match the cluster's release, or a real-release cluster evicts the client
-# (client_release_too_high). See the tigerbeetle-integration-gotchas note.
+# Why main and unstamped: tagged releases (0.17.x) pin zig 0.14.1, which doesn't
+# work on current macOS; main pins zig 0.16. Builds are left unstamped (no
+# -Dconfig-release), so client and server both report release 65535.0.0. That
+# only works if both come from the SAME commit, hence building the server here
+# too. The commit sha is embedded automatically (build.zig defaults -Dgit-commit
+# to `git rev-parse HEAD`; `tigerbeetle version` shows 65535.0.0+<sha>) and is
+# recorded in platform/targets/TB_COMMIT.
 
 root_dir="$(cd "$(dirname "$0")" && pwd)"
 
@@ -19,7 +25,7 @@ root_dir="$(cd "$(dirname "$0")" && pwd)"
 tb="${ROC_TB_TIGERBEETLE_REPO:-}"
 if [[ -z "$tb" ]]; then
     echo "error: set ROC_TB_TIGERBEETLE_REPO to your local tigerbeetle checkout." >&2
-    echo "usage: ROC_TB_TIGERBEETLE_REPO=/path/to/tigerbeetle $0 [VERSION]" >&2
+    echo "usage: ROC_TB_TIGERBEETLE_REPO=/path/to/tigerbeetle $0" >&2
     exit 1
 fi
 if [[ ! -d "$tb" ]]; then
@@ -46,31 +52,25 @@ if [[ ! -x "$zig" ]] || ! "$zig" version >/dev/null 2>&1; then
 fi
 echo "[zig] ready: $("$zig" version)"
 
-# --- Determine the version to stamp ------------------------------------------
-# Highest stable tag only: pure MAJOR.MINOR.PATCH, excluding legacy release-*
-# and the lone "test" tag.
-if [[ $# -ge 1 ]]; then
-    version="$1"
-else
-    version="$(git -C "$tb" tag --list --sort=-version:refname |
-        grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
-fi
-if [[ -z "$version" ]]; then
-    echo "error: could not determine a stable version tag in $tb" \
-        "(pass one explicitly: $0 X.Y.Z)." >&2
+# --- Identify the commit being built -----------------------------------------
+if [[ $# -gt 0 ]]; then
+    echo "error: $0 takes no arguments (it builds the TB checkout's HEAD)." >&2
     exit 1
 fi
-echo "[version] stamping client as $version"
+sha="$(git -C "$tb" rev-parse HEAD)"
+echo "[commit] building tigerbeetle $sha (unstamped, release 65535.0.0)"
+if [[ -n "$(git -C "$tb" status --porcelain --untracked-files=no)" ]]; then
+    echo "warning: $tb has uncommitted changes; the build won't match $sha exactly." >&2
+fi
 
-# --- Build the release-stamped C client --------------------------------------
-# -Drelease == ReleaseSafe (the TigerBeetle ethos / our bench baseline). This
-# cross-compiles every platform into src/clients/c/lib/<zig-triple>/.
-echo "[build] $zig build clients:c -Drelease" \
-    "-Dconfig-release=$version -Dconfig-release-client-min=$version"
-(cd "$tb" && "$zig" build clients:c \
-    -Drelease \
-    -Dconfig-release="$version" \
-    -Dconfig-release-client-min="$version")
+# --- Build the C client and the server ---------------------------------------
+# -Drelease == ReleaseSafe (the TigerBeetle ethos / our bench baseline).
+# clients:c cross-compiles every platform into src/clients/c/lib/<zig-triple>/;
+# the plain build produces ./tigerbeetle for the host.
+echo "[build] $zig build clients:c -Drelease"
+(cd "$tb" && "$zig" build clients:c -Drelease)
+echo "[build] $zig build -Drelease"
+(cd "$tb" && "$zig" build -Drelease)
 
 # --- Copy the static archive per Roc-supported target ------------------------
 # Static archive only (what the Roc host links), linux-musl not gnu. arm64win is
@@ -99,4 +99,10 @@ copy_one arm64musl aarch64-linux-musl libtb_client.a
 copy_one x64win x86_64-windows tb_client.lib
 echo "  - arm64win skipped (TigerBeetle has no aarch64-windows client)"
 
-echo "[done] vendored TigerBeetle client $version into platform/targets/"
+bin_dir="$root_dir/tigerbeetle-bin"
+mkdir -p "$bin_dir"
+cp "$tb/tigerbeetle" "$bin_dir/tigerbeetle"
+echo "  ✓ tigerbeetle-bin/tigerbeetle <- $("$bin_dir/tigerbeetle" version | head -n1)"
+
+echo "$sha" >"$targets_dir/TB_COMMIT"
+echo "[done] vendored TigerBeetle client + server @ $sha"

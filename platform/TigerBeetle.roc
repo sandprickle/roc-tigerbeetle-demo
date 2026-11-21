@@ -1,5 +1,3 @@
-import Host
-
 TigerBeetle := [].{
 	Client :: {}.{
 
@@ -54,21 +52,8 @@ TigerBeetle := [].{
 				AddressLimitExceeded,
 				SystemResources,
 				NetworkSubsystem,
-				..,
 			],
 		)
-		init! = |opts|
-			Host.tb_client_init!(opts).map_err(
-				|e| match e {
-					Unexpected => Unexpected
-					OutOfMemory => OutOfMemory
-					AddressInvalid => AddressInvalid
-					AddressLimitExceeded => AddressLimitExceeded
-					SystemResources => SystemResources
-					NetworkSubsystem => NetworkSubsystem
-				},
-			)
-
 	}
 
 	## A record storing the cumulative effect of committed `Transfer`s.
@@ -76,70 +61,22 @@ TigerBeetle := [].{
 	## [Official Docs](https://docs.tigerbeetle.com/reference/account/)
 	Account := {
 		id : U128,
-		debits_pending : U128,
-		debits_posted : U128,
-		credits_pending : U128,
-		credits_posted : U128,
-		user_data_128 : U128,
-		user_data_64 : U64,
-		user_data_32 : U32,
-		reserved : Reserved4,
+		debits_pending : U128 ?? 0,
+		debits_posted : U128 ?? 0,
+		credits_pending : U128 ?? 0,
+		credits_posted : U128 ?? 0,
+		user_data_128 : U128 ?? 0,
+		user_data_64 : U64 ?? 0,
+		user_data_32 : U32 ?? 0,
+		reserved : Reserved4 ?? 0,
 		ledger : U32,
 		code : U16,
-		flags : U16,
-		timestamp : U64,
+		flags : U16 ?? Flags.none,
+		timestamp : U64 ?? 0,
+
 		# Opt in to declaration ordering
 		_ : {},
 	}.{
-		init : {
-			id : U128,
-			ledger : U32,
-			code : U16,
-		} -> Account
-		init = |{ id, ledger, code }| {
-			id,
-			debits_pending: 0,
-			debits_posted: 0,
-			credits_pending: 0,
-			credits_posted: 0,
-			user_data_128: 0,
-			user_data_64: 0,
-			user_data_32: 0,
-			reserved: 0,
-			ledger,
-			code,
-			flags: 0,
-			timestamp: 0,
-		}
-
-		flags : Account, List(Flags) -> Account
-		flags = |account, new_flags| {
-			..account,
-			flags: Flags.build(new_flags),
-		}
-		user_data_128 : Account, U128 -> Account
-		user_data_128 = |account, user_data_128| {
-			..account,
-			user_data_128,
-		}
-		user_data_64 : Account, U64 -> Account
-		user_data_64 = |account, user_data_64| {
-			..account,
-			user_data_64,
-		}
-
-		user_data_32 : Account, U32 -> Account
-		user_data_32 = |account, user_data_32| {
-			..account,
-			user_data_32,
-		}
-
-		timestamp : Account, U64 -> Account
-		timestamp = |account, timestamp| {
-			..account,
-			timestamp,
-		}
-
 		Flags := [
 			Linked,
 
@@ -148,18 +85,23 @@ TigerBeetle := [].{
 
 			## Mutually exclusive wth `DebitsMustNotExceedCredits`
 			CreditsMustNotExceedDebits,
+
 			History,
 			Imported,
 			Closed,
 		].{
 			none = 0.U16
-			linked = 1.U16
-			debits_must_not_exceed_credits = 2.U16
-			credits_must_not_exceed_debits = 4.U16
-			history = 8.U16
-			imported = 16.U16
-			closed = 32.U16
+			linked = (1.U16).shl_wrap(0)
+			debits_must_not_exceed_credits = (1.U16).shl_wrap(1)
+			credits_must_not_exceed_debits = (1.U16).shl_wrap(2)
+			history = (1.U16).shl_wrap(3)
+			imported = (1.U16).shl_wrap(4)
+			closed = (1.U16).shl_wrap(5)
 
+			## Build a U16 value for the `flags` field of an `Account` from a
+			## list of tags.
+			##
+			## TODO: Is this a good name?
 			build : List(Flags) -> U16
 			build = |flag_list| flag_list.fold(
 				none,
@@ -176,7 +118,47 @@ TigerBeetle := [].{
 					},
 				),
 			)
+
+			to_U16 = build
+
+			from_list = build
 		}
+
+		# init : {
+		# 	id : U128,
+		# 	ledger : U32,
+		# 	code : U16,
+		# } -> Account
+		# init = |{ id, ledger, code }| { id, ledger, code }
+
+		# flags : Account, List(Flags) -> Account
+		# flags = |account, new_flags| {
+		# 	..account,
+		# 	flags: Flags.build(new_flags),
+		# }
+		# user_data_128 : Account, U128 -> Account
+		# user_data_128 = |account, val| {
+		# 	..account,
+		# 	user_data_128: val,
+		# }
+		# user_data_64 : Account, U64 -> Account
+		# user_data_64 = |account, val| {
+		# 	..account,
+		# 	user_data_64: val,
+		# }
+
+		# user_data_32 : Account, U32 -> Account
+		# user_data_32 = |account, val| {
+		# 	..account,
+		# 	user_data_32: val,
+		# }
+
+		# timestamp : Account, U64 -> Account
+		# timestamp = |account, val| {
+		# 	..account,
+		# 	timestamp: val,
+		# }
+
 	}
 
 	## An immutable record of a financial transaction between two accounts.
@@ -187,95 +169,19 @@ TigerBeetle := [].{
 		debit_account_id : U128,
 		credit_account_id : U128,
 		amount : U128,
-		pending_id : U128,
-		user_data_128 : U128,
-		user_data_64 : U64,
-		user_data_32 : U32,
-		timeout : U32,
+		pending_id : U128 ?? 0,
+		user_data_128 : U128 ?? 0,
+		user_data_64 : U64 ?? 0,
+		user_data_32 : U32 ?? 0,
+		timeout : U32 ?? 0,
 		ledger : U32,
-		code : U16,
-		flags : U16,
-		timestamp : U64,
+		code : U16 ?? 0,
+		flags : U16 ?? Flags.none,
+		timestamp : U64 ?? 0,
+
 		# Opt in to declaration ordering
 		_ : {},
 	}.{
-		init : {
-			id : U128,
-			debit_account_id : U128,
-			credit_account_id : U128,
-			amount : U128,
-			ledger : U32,
-		} -> Transfer
-		init = |{ id, debit_account_id, credit_account_id, amount, ledger }| {
-			id,
-			debit_account_id,
-			credit_account_id,
-			amount,
-			pending_id: 0,
-			user_data_128: 0,
-			user_data_64: 0,
-			user_data_32: 0,
-			timeout: 0,
-			ledger,
-			code: 0,
-			flags: 0,
-			timestamp: 0,
-		}
-
-		debit_account_id : Transfer, U128 -> Transfer
-		debit_account_id = |transfer, debit_account_id| {
-			..transfer,
-			debit_account_id,
-		}
-
-		credit_account_id : Transfer, U128 -> Transfer
-		credit_account_id = |transfer, credit_account_id| {
-			..transfer,
-			credit_account_id,
-		}
-
-		pending_id : Transfer, U128 -> Transfer
-		pending_id = |transfer, pending_id| {
-			..transfer,
-			pending_id,
-		}
-
-		user_data_128 : Transfer, U128 -> Transfer
-		user_data_128 = |transfer, user_data_128| {
-			..transfer,
-			user_data_128,
-		}
-
-		user_data_64 : Transfer, U64 -> Transfer
-		user_data_64 = |transfer, user_data_64| {
-			..transfer,
-			user_data_64,
-		}
-
-		user_data_32 : Transfer, U32 -> Transfer
-		user_data_32 = |transfer, user_data_32| {
-			..transfer,
-			user_data_32,
-		}
-
-		timeout : Transfer, U32 -> Transfer
-		timeout = |transfer, timeout| {
-			..transfer,
-			timeout,
-		}
-
-		code : Transfer, U16 -> Transfer
-		code = |transfer, code| {
-			..transfer,
-			code,
-		}
-
-		flags : Transfer, List(Flags) -> Transfer
-		flags = |transfer, new_flags| {
-			..transfer,
-			flags: Flags.build(new_flags),
-		}
-
 		Flags := [
 			Linked,
 			Pending,
@@ -288,15 +194,15 @@ TigerBeetle := [].{
 			Imported,
 		].{
 			none = 0.U16
-			linked = 1.U16
-			pending = 2.U16
-			post_pending_transfer = 4.U16
-			void_pending_transfer = 8.U16
-			balancing_debit = 16.U16
-			balancing_credit = 32.U16
-			closing_debit = 64.U16
-			closing_credit = 128.U16
-			imported = 256.U16
+			linked = (1.U16).shl_wrap(0)
+			pending = (1.U16).shl_wrap(1)
+			post_pending_transfer = (1.U16).shl_wrap(2)
+			void_pending_transfer = (1.U16).shl_wrap(3)
+			balancing_debit = (1.U16).shl_wrap(4)
+			balancing_credit = (1.U16).shl_wrap(5)
+			closing_debit = (1.U16).shl_wrap(6)
+			closing_credit = (1.U16).shl_wrap(7)
+			imported = (1.U16).shl_wrap(8)
 
 			build : List(Flags) -> U16
 			build = |flag_list| flag_list.fold(
@@ -316,6 +222,84 @@ TigerBeetle := [].{
 				),
 			)
 		}
+
+		# init : {
+		# 	id : U128,
+		# 	debit_account_id : U128,
+		# 	credit_account_id : U128,
+		# 	amount : U128,
+		# 	ledger : U32,
+		# } -> Transfer
+		# init = |{ id, debit_account_id, credit_account_id, amount, ledger }| {
+		# 	id,
+		# 	debit_account_id,
+		# 	credit_account_id,
+		# 	amount,
+		# 	pending_id: 0,
+		# 	user_data_128: 0,
+		# 	user_data_64: 0,
+		# 	user_data_32: 0,
+		# 	timeout: 0,
+		# 	ledger,
+		# 	code: 0,
+		# 	flags: 0,
+		# 	timestamp: 0,
+		# }
+
+		# debit_account_id : Transfer, U128 -> Transfer
+		# debit_account_id = |transfer, val| {
+		# 	..transfer,
+		# 	debit_account_id: val,
+		# }
+
+		# credit_account_id : Transfer, U128 -> Transfer
+		# credit_account_id = |transfer, val| {
+		# 	..transfer,
+		# 	credit_account_id: val,
+		# }
+
+		# pending_id : Transfer, U128 -> Transfer
+		# pending_id = |transfer, val| {
+		# 	..transfer,
+		# 	pending_id: val,
+		# }
+
+		# user_data_128 : Transfer, U128 -> Transfer
+		# user_data_128 = |transfer, val| {
+		# 	..transfer,
+		# 	user_data_128: val,
+		# }
+
+		# user_data_64 : Transfer, U64 -> Transfer
+		# user_data_64 = |transfer, val| {
+		# 	..transfer,
+		# 	user_data_64: val,
+		# }
+
+		# user_data_32 : Transfer, U32 -> Transfer
+		# user_data_32 = |transfer, val| {
+		# 	..transfer,
+		# 	user_data_32: val,
+		# }
+
+		# timeout : Transfer, U32 -> Transfer
+		# timeout = |transfer, val| {
+		# 	..transfer,
+		# 	timeout: val,
+		# }
+
+		# code : Transfer, U16 -> Transfer
+		# code = |transfer, val| {
+		# 	..transfer,
+		# 	code: val,
+		# }
+
+		# flags : Transfer, List(Flags) -> Transfer
+		# flags = |transfer, new_flags| {
+		# 	..transfer,
+		# 	flags: Flags.build(new_flags),
+		# }
+
 	}
 
 	## A record storing the `Account`’s balance at a given point in time.
@@ -329,6 +313,8 @@ TigerBeetle := [].{
 		credits_pending : U128,
 		credits_posted : U128,
 		timestamp : U64,
+		# AccountBalance can never be constructed by a Roc application
+		# developer, so we can use the hidden field feature here safely.
 		_reserved : Reserved56,
 	}
 
@@ -338,99 +324,102 @@ TigerBeetle := [].{
 	## [Official Docs](https://docs.tigerbeetle.com/reference/account-filter/)
 	AccountFilter := {
 		account_id : U128,
-		user_data_128 : U128,
-		user_data_64 : U64,
-		user_data_32 : U32,
-		code : U16,
-		reserved : Reserved58,
-		timestamp_min : U64,
-		timestamp_max : U64,
-		limit : U32,
-		flags : U32,
+		user_data_128 : U128 ?? 0,
+		user_data_64 : U64 ?? 0,
+		user_data_32 : U32 ?? 0,
+		code : U16 ?? 0,
+		reserved : Reserved58 ?? 0,
+		timestamp_min : U64 ?? 0,
+		timestamp_max : U64 ?? 0,
+		limit : U32 ?? 0,
+		flags : U32 ?? Flags.none,
+
 		# Opt in to declaration ordering
 		_ : {},
 	}.{
-		init : {
-			account_id : U128,
-		} -> AccountFilter
-		init = |{ account_id }| {
-			account_id,
-			user_data_128: 0,
-			user_data_64: 0,
-			user_data_32: 0,
-			code: 0,
-			reserved: 0,
-			timestamp_min: 0,
-			timestamp_max: 0,
-			limit: 0,
-			flags: 0,
-		}
-
-		user_data_128 : AccountFilter, U128 -> AccountFilter
-		user_data_128 = |filter, user_data_128| {
-			..filter,
-			user_data_128,
-		}
-
-		user_data_64 : AccountFilter, U64 -> AccountFilter
-		user_data_64 = |filter, user_data_64| {
-			..filter,
-			user_data_64,
-		}
-
-		user_data_32 : AccountFilter, U32 -> AccountFilter
-		user_data_32 = |filter, user_data_32| {
-			..filter,
-			user_data_32,
-		}
-
-		code : AccountFilter, U16 -> AccountFilter
-		code = |filter, code| {
-			..filter,
-			code,
-		}
-
-		timestamp_min : AccountFilter, U64 -> AccountFilter
-		timestamp_min = |filter, timestamp_min| {
-			..filter,
-			timestamp_min,
-		}
-
-		timestamp_max : AccountFilter, U64 -> AccountFilter
-		timestamp_max = |filter, timestamp_max| {
-			..filter,
-			timestamp_max,
-		}
-
-		limit : AccountFilter, U32 -> AccountFilter
-		limit = |filter, limit| {
-			..filter,
-			limit,
-		}
-
-		flags : AccountFilter, List(Flags) -> AccountFilter
-		flags = |filter, new_flags| {
-			..filter,
-			flags: Flags.build(new_flags),
-		}
-
-		Flags := [Debits, Credits].{
+		Flags := [Debits, Credits, Reversed].{
 			none = 0.U32
-			debits = 1.U32
-			credits = 2.U32
-			reversed = 4.U32
+			debits = (1.U32).shl_wrap(0)
+			credits = (1.U32).shl_wrap(1)
+			reversed = (1.U32).shl_wrap(2)
 
 			build : List(Flags) -> U32
 			build = |flag_list| flag_list.fold(
 				none,
 				|acc, flag| acc.bitwise_or(
 					match flag {
-						Debits => 1.U32
-						Credits => 2.U32
+						Debits => debits
+						Credits => credits
+						Reversed => reversed
 					},
 				),
 			)
 		}
+
+		# init : {
+		# 	account_id : U128,
+		# } -> AccountFilter
+		# init = |{ account_id }| {
+		# 	account_id,
+		# 	user_data_128: 0,
+		# 	user_data_64: 0,
+		# 	user_data_32: 0,
+		# 	code: 0,
+		# 	reserved: 0,
+		# 	timestamp_min: 0,
+		# 	timestamp_max: 0,
+		# 	limit: 0,
+		# 	flags: 0,
+		# }
+
+		# user_data_128 : AccountFilter, U128 -> AccountFilter
+		# user_data_128 = |filter, val| {
+		# 	..filter,
+		# 	user_data_128: val,
+		# }
+
+		# user_data_64 : AccountFilter, U64 -> AccountFilter
+		# user_data_64 = |filter, val| {
+		# 	..filter,
+		# 	user_data_64: val,
+		# }
+
+		# user_data_32 : AccountFilter, U32 -> AccountFilter
+		# user_data_32 = |filter, val| {
+		# 	..filter,
+		# 	user_data_32: val,
+		# }
+
+		# code : AccountFilter, U16 -> AccountFilter
+		# code = |filter, val| {
+		# 	..filter,
+		# 	code: val,
+		# }
+
+		# timestamp_min : AccountFilter, U64 -> AccountFilter
+		# timestamp_min = |filter, val| {
+		# 	..filter,
+		# 	timestamp_min: val,
+		# }
+
+		# timestamp_max : AccountFilter, U64 -> AccountFilter
+		# timestamp_max = |filter, val| {
+		# 	..filter,
+		# 	timestamp_max: val,
+		# }
+
+		# limit : AccountFilter, U32 -> AccountFilter
+		# limit = |filter, val| {
+		# 	..filter,
+		# 	limit: val,
+		# }
+
+		# flags : AccountFilter, List(Flags) -> AccountFilter
+		# flags = |filter, new_flags| {
+		# 	..filter,
+		# 	flags: Flags.build(new_flags),
+		# }
+
 	}
 
 	## A record containing the filter parameters for querying accounts and
@@ -438,79 +427,75 @@ TigerBeetle := [].{
 	##
 	## [Official Docs](https://docs.tigerbeetle.com/reference/query-filter/)
 	QueryFilter := {
-		user_data_128 : U128,
-		user_data_64 : U64,
-		user_data_32 : U32,
-		ledger : U32,
-		code : U16,
-		reserved : Reserved6,
-		timestamp_min : U64,
-		timestamp_max : U64,
-		limit : U32,
+		user_data_128 : U128 ?? 0,
+		user_data_64 : U64 ?? 0,
+		user_data_32 : U32 ?? 0,
+		ledger : U32 ?? 0,
+		code : U16 ?? 0,
+		reserved : Reserved6 ?? 0,
+		timestamp_min : U64 ?? 0,
+		timestamp_max : U64 ?? 0,
+		limit : U32 ?? 0,
+		flags : U32 ?? Flags.none,
 
-		## There are currently no valid values for `flags` other than 0
-		_flags : U32,
+		# Opt in to declaration ordering
+		_ : {},
 	}.{
-		init : () -> QueryFilter
-		init = || {
-			user_data_128: 0,
-			user_data_64: 0,
-			user_data_32: 0,
-			ledger: 0,
-			code: 0,
-			reserved: 0,
-			timestamp_min: 0,
-			timestamp_max: 0,
-			limit: 0,
+		Flags := [Reversed].{
+			none = 0.U32
+			reversed = (1.U32).shl_wrap(0)
+
+			build : List(Flags) -> U32
+			build = |flag_list| flag_list.fold(
+				none,
+				|acc, flag| acc.bitwise_or(
+					match flag {
+						Reversed => reversed
+					},
+				),
+			)
 		}
 
-		user_data_128 : QueryFilter, U128 -> QueryFilter
-		user_data_128 = |filter, user_data_128| {
-			..filter,
-			user_data_128,
-		}
+		# init : () -> QueryFilter
+		# init = || {
+		# 	user_data_128: 0,
+		# 	user_data_64: 0,
+		# 	user_data_32: 0,
+		# 	ledger: 0,
+		# 	code: 0,
+		# 	reserved: 0,
+		# 	timestamp_min: 0,
+		# 	timestamp_max: 0,
+		# 	limit: 0,
+		# 	flags: 0,
+		# }
 
-		user_data_64 : QueryFilter, U64 -> QueryFilter
-		user_data_64 = |filter, user_data_64| {
-			..filter,
-			user_data_64,
-		}
+		# user_data_128 : QueryFilter, U128 -> QueryFilter
+		# user_data_128 = |filter, val| { ..filter, user_data_128: val }
 
-		user_data_32 : QueryFilter, U32 -> QueryFilter
-		user_data_32 = |filter, user_data_32| {
-			..filter,
-			user_data_32,
-		}
+		# user_data_64 : QueryFilter, U64 -> QueryFilter
+		# user_data_64 = |filter, val| { ..filter, user_data_64: val }
 
-		ledger : QueryFilter, U32 -> QueryFilter
-		ledger = |filter, ledger| {
-			..filter,
-			ledger,
-		}
+		# user_data_32 : QueryFilter, U32 -> QueryFilter
+		# user_data_32 = |filter, val| { ..filter, user_data_32: val }
 
-		code : QueryFilter, U16 -> QueryFilter
-		code = |filter, code| {
-			..filter,
-			code,
-		}
+		# ledger : QueryFilter, U32 -> QueryFilter
+		# ledger = |filter, val| { ..filter, ledger: val }
 
-		timestamp_min : QueryFilter, U64 -> QueryFilter
-		timestamp_min = |filter, timestamp_min| {
-			..filter,
-			timestamp_min,
-		}
+		# code : QueryFilter, U16 -> QueryFilter
+		# code = |filter, val| { ..filter, code: val }
 
-		timestamp_max : QueryFilter, U64 -> QueryFilter
-		timestamp_max = |filter, timestamp_max| {
-			..filter,
-			timestamp_max,
-		}
+		# timestamp_min : QueryFilter, U64 -> QueryFilter
+		# timestamp_min = |filter, val| { ..filter, timestamp_min: val }
 
-		limit : QueryFilter, U32 -> QueryFilter
-		limit = |filter, limit| {
-			..filter,
-			limit,
-		}
+		# timestamp_max : QueryFilter, U64 -> QueryFilter
+		# timestamp_max = |filter, val| { ..filter, timestamp_max: val }
+
+		# limit : QueryFilter, U32 -> QueryFilter
+		# limit = |filter, val| { ..filter, limit: val }
+
+		# flags : QueryFilter, U32 -> QueryFilter
+		# flags = |filter, val| { ..filter, flags: val }
 
 	}
 
@@ -518,6 +503,8 @@ TigerBeetle := [].{
 	CreateTransferResult :: {
 		timestamp : U64,
 		status : U32,
+		# CreateTransferResult can never be constructed by a Roc application
+		# developer, so we can use the hidden field feature here safely.
 		_reserved : Reserved4,
 	}.{
 		status_created = 0xFFFFFFFF.U32
@@ -686,6 +673,8 @@ TigerBeetle := [].{
 	CreateAccountResult :: {
 		timestamp : U64,
 		status : U32,
+		# CreateAccountResult can never be constructed by a Roc application
+		# developer, so we can use the hidden field feature here safely.
 		_reserved : Reserved4,
 	}.{
 		status_created = 0xFFFFFFFF.U32
@@ -770,7 +759,7 @@ TigerBeetle := [].{
 
 	## 4 byte reserved field that must always be 0
 	Reserved4 :: U32.{
-		from_numeral : Numeral -> Try(Reserved4, [InvalidNumeral(Str), ..])
+		from_numeral : Numeral -> Try(Reserved4, [InvalidNumeral(Str)])
 		from_numeral = |numeral| match U8.from_numeral(numeral) {
 			Ok(0) => Ok(Reserved4.(0))
 			_ => Err(InvalidNumeral("reserved must be 0"))
@@ -779,7 +768,7 @@ TigerBeetle := [].{
 
 	## 6 byte reserved field that must always be 0
 	Reserved6 :: (U16, U16, U16).{
-		from_numeral : Numeral -> Try(Reserved6, [InvalidNumeral(Str), ..])
+		from_numeral : Numeral -> Try(Reserved6, [InvalidNumeral(Str)])
 		from_numeral = |numeral| match U8.from_numeral(numeral) {
 			Ok(0) => Ok(Reserved6.(0, 0, 0))
 			_ => Err(InvalidNumeral("reserved must be 0"))
@@ -788,7 +777,7 @@ TigerBeetle := [].{
 
 	## 56 byte reserved field that must always be 0
 	Reserved56 :: (U64, U64, U64, U64, U64, U64, U64).{
-		from_numeral : Numeral -> Try(Reserved56, [InvalidNumeral(Str), ..])
+		from_numeral : Numeral -> Try(Reserved56, [InvalidNumeral(Str)])
 		from_numeral = |numeral| match U8.from_numeral(numeral) {
 			Ok(0) => Ok(Reserved56.(0, 0, 0, 0, 0, 0, 0))
 			_ => Err(InvalidNumeral("reserved must be 0"))
@@ -797,7 +786,7 @@ TigerBeetle := [].{
 
 	## 58 byte reserved field that must always be 0
 	Reserved58 :: (U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16, U16).{
-		from_numeral : Numeral -> Try(Reserved58, [InvalidNumeral(Str), ..])
+		from_numeral : Numeral -> Try(Reserved58, [InvalidNumeral(Str)])
 		from_numeral = |numeral| match U8.from_numeral(numeral) {
 			Ok(0) => Ok(
 				Reserved58.(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),

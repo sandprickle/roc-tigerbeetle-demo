@@ -4,7 +4,7 @@
 //! reused for the life of the process (see `g_tb_client`). TB's API is
 //! asynchronous — `tb_client_submit`
 //! completes via `onCompletion` on the client's own thread — but Roc's hosted
-//! functions are synchronous, so each call submits one packet and blocks on a
+//! functions are synchronous, so each call submits one batch and blocks on a
 //! semaphore until the completion callback fires. This is sound because Roc runs
 //! `main!` single-threaded, so we only ever have one request in flight.
 //!
@@ -82,7 +82,7 @@ const IdState = struct {
 };
 
 fn randomBits128() u128 {
-    var buf = [_]u8{0} ** 16;
+    var buf: [16]u8 = @splat(0);
     std.Io.random(g_io, &buf);
     return @bitCast(buf);
 }
@@ -175,13 +175,33 @@ test "id: timestamp is masked to 48 bits" {
 /// optional so we can fail gracefully if the unthinkable happens.
 var g_tb_client: ?tb.Client = null;
 
-const TryClientInit = abi.TryType28;
-const TryClientInitTag = abi.TryType28Tag;
-const TryClientInitPayload = abi.TryType28Payload;
+const TryClientInit = abi.TigerBeetleClientInitResult;
+const TryClientInitTag = abi.TigerBeetleClientInitResultTag;
+const TryClientInitPayload = abi.TigerBeetleClientInitResultPayload;
 
-pub fn initClient(
+/// C-ABI entry point for `TigerBeetle.Client.init!`, exported as
+/// `roc_tb_client_init`. Returns the 2-byte `TryClientInit` bit-cast to `u16`.
+///
+/// TODO
+/// WORKAROUND (zig 0.17.1, LLVM backend): returning a 2-byte extern struct
+/// directly via `callconv(.c)` lowers to `ret i64 (load i64 from a 2-byte
+/// alloca)`. That over-read is UB, so in optimized builds LLVM deletes the
+/// stores that build the result and Roc receives uninitialized stack, which
+/// often decodes as `Err(AddressInvalid)` (tag 0, payload 0). A `u16` return
+/// is ABI-identical to a size-2 composite on every target we ship (AAPCS64 w0,
+/// SysV/Win64 ax) and has no over-read.
+pub fn initClientC(
     args: abi.TigerBeetleClientInitArgs,
-) callconv(.c) TryClientInit {
+) callconv(.c) u16 {
+    comptime std.debug.assert(@sizeOf(TryClientInit) == @sizeOf(u16));
+    // @bitCast rejects extern structs containing unions, so reinterpret bytes.
+    const result = initClient(args);
+    return std.mem.bytesToValue(u16, std.mem.asBytes(&result));
+}
+
+fn initClient(
+    args: abi.TigerBeetleClientInitArgs,
+) TryClientInit {
     // The `addresses` RocStr is owned by this hosted call; release it on exit.
     // TB parses the addresses during init and does not retain the pointer.
     const addresses = args.addresses;
@@ -199,7 +219,7 @@ pub fn initClient(
         &@bitCast(args.cluster_id),
         addresses.asU8ptr(),
         @intCast(addresses.len()),
-        0, // per-client ctx unused; per-call ctx travels in packet.user_data
+        0, // per-client ctx unused; per-call ctx travels in batch.user_data
         &onCompletion,
     );
 
@@ -218,11 +238,16 @@ pub fn initClient(
 }
 
 fn clientInitOk() TryClientInit {
-    return TryClientInit{ .payload = .{ .ok = .{} }, .tag = TryClientInitTag.Ok };
+    // TODO?
+    // `ok` is zero-sized, which would leave the payload byte undefined; zero
+    // it so no undefined bits cross the ABI (or trip @bitCast in initClientC).
+    var result = std.mem.zeroes(TryClientInit);
+    result.tag = TryClientInitTag.Ok;
+    return result;
 }
 
-const TigerBeetleClientInitErr =
-    abi.AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected;
+const TigerBeetleClientInitErr = abi.TigerBeetleClientInitErr;
+
 fn clientInitErr(err: TigerBeetleClientInitErr) TryClientInit {
     return TryClientInit{
         .payload = .{ .err = err },
@@ -239,27 +264,27 @@ pub fn deinitClient() void {
 // --- async -> sync bridge --------------------------------------------------
 
 /// Per-call state shared between the submitting thread and the completion
-/// callback, handed to TB via `packet.user_data`.
+/// callback, handed to TB via `batch.user_data`.
 const Completion = struct {
     done: std.Io.Semaphore = .{}, // starts at 0 permits
     out: []u8, // caller-owned buffer the result bytes are copied into
     out_len: u32 = 0,
-    status: tb.PacketStatus = .ok,
+    status: tb.BatchStatus = .ok,
 };
 
 /// Runs on the TB client thread. `result` is only valid for this call, so copy
 /// it out before signaling. Synchronization with the waiter is via `done`.
 fn onCompletion(
     userdata: usize,
-    packet: *tb.Packet,
+    batch: *tb.Batch,
     timestamp: u64,
     result: ?[*]const u8,
     result_size: u32,
 ) callconv(.c) void {
     _ = userdata;
     _ = timestamp;
-    const ctx: *Completion = @ptrCast(@alignCast(packet.user_data.?));
-    ctx.status = packet.status;
+    const ctx: *Completion = @ptrCast(@alignCast(batch.user_data.?));
+    ctx.status = batch.status;
     if (result) |r| {
         const n: u32 = @min(result_size, @as(u32, @intCast(ctx.out.len)));
         @memcpy(ctx.out[0..n], r[0..n]);
@@ -270,7 +295,7 @@ fn onCompletion(
 
 // --- async -> sync submit helper -------------------------------------------
 
-/// Submit one packet for `operation` carrying `data`, block until TB's
+/// Submit one batch for `operation` carrying `data`, block until TB's
 /// completion callback fires, and copy up to `out.len` result bytes into `out`.
 /// Returns the number of result bytes written. Transport-level failures are
 /// fatal — they have no per-event representation in the result list.
@@ -300,9 +325,9 @@ fn submit(operation: tb.Operation, data: []const u8, out: []u8) u32 {
     );
 
     var completion = Completion{ .out = out };
-    var packet = tb.Packet{
+    var batch = tb.Batch{
         .user_data = &completion,
-        .data = @constCast(data.ptr),
+        .data = data.ptr,
         .data_size = @intCast(data.len),
         .user_tag = 0,
         .operation = operation,
@@ -310,11 +335,11 @@ fn submit(operation: tb.Operation, data: []const u8, out: []u8) u32 {
         .opaque_fields = undefined,
     };
 
-    const submit_status = tb.tb_client_submit(client, &packet);
-    if (submit_status != .ok) fatal("tb_client_submit failed (client closed?)");
+    const submit_status = tb.tb_client_submit(client, &batch);
+    if (submit_status != .success) fatal("tb_client_submit failed (client closed?)");
 
     completion.done.waitUncancelable(g_io);
-    if (completion.status != .ok) fatal("request did not complete OK (see TB_PACKET_STATUS)");
+    if (completion.status != .ok) fatal("request did not complete OK (see TB_BATCH_STATUS)");
 
     return completion.out_len;
 }
@@ -552,9 +577,10 @@ fn fatal(comptime msg: []const u8) noreturn {
 }
 
 comptime {
+    // Types for reserved fields on structs the Roc application developer
+    // can construct.
     const reserved_types = [_]struct { t: type, size: comptime_int }{
         .{ .t = abi.TigerBeetleReserved6, .size = 6 },
-        .{ .t = abi.TigerBeetleReserved56, .size = 56 },
         .{ .t = abi.TigerBeetleReserved58, .size = 58 },
     };
 
@@ -606,12 +632,16 @@ fn assertSameStructLayout(comptime Roc: type, comptime Tb: type, comptime name: 
 
     if (total_size_mismatch or total_align_mismatch) return;
 
-    const tb_fields = @typeInfo(Tb).@"struct".fields;
-    const roc_fields = @typeInfo(Roc).@"struct".fields;
+    const tb_info = @typeInfo(Tb).@"struct";
+    const roc_info = @typeInfo(Roc).@"struct";
 
-    for (tb_fields, roc_fields) |tb_field, roc_field| {
-        const tb_size = @sizeOf(tb_field.type);
-        const roc_size = @sizeOf(roc_field.type);
+    for (
+        tb_info.field_types,
+        roc_info.field_types,
+        0..,
+    ) |tb_type, roc_type, i| {
+        const tb_size = @sizeOf(tb_type);
+        const roc_size = @sizeOf(roc_type);
 
         if (tb_size != roc_size) @compileError(std.fmt.comptimePrint(
             \\
@@ -620,7 +650,13 @@ fn assertSameStructLayout(comptime Roc: type, comptime Tb: type, comptime name: 
             \\    Roc size {d} != TB size {d}
             \\
         ,
-            .{ name, tb_field.name, roc_field.name, roc_size, tb_size },
+            .{
+                name,
+                tb_info.field_names[i],
+                roc_info.field_names[i],
+                roc_size,
+                tb_size,
+            },
         ));
     }
 }

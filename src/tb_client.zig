@@ -108,7 +108,7 @@ pub const CreateTransferResult = extern struct {
 // Enums
 // =============================================================================
 
-/// `TB_OPERATION` — stored in `Packet.operation` (a `u8`).
+/// `TB_OPERATION` — stored in `Batch.operation` (a `u8`).
 pub const Operation = enum(u8) {
     pulse = 128,
     get_change_events = 137,
@@ -137,19 +137,20 @@ pub const InitStatus = enum(c_int) {
 
 /// `TB_CLIENT_STATUS` — returned by `tb_client_submit` / `tb_client_deinit`.
 pub const ClientStatus = enum(c_int) {
-    ok = 0,
-    invalid = 1,
+    success = 0,
+    closed = 1,
+    not_initialized = 2,
     _,
 };
 
-/// `TB_PACKET_STATUS` — written to `Packet.status` (a `u8`) by the client.
-pub const PacketStatus = enum(u8) {
+/// `TB_BATCH_STATUS` — written to `Batch.status` (a `u8`) by the client.
+pub const BatchStatus = enum(u8) {
     ok = 0,
     too_much_data = 1,
     client_evicted = 2,
     client_release_too_low = 3,
     client_release_too_high = 4,
-    client_shutdown = 5,
+    client_closed = 5,
     invalid_operation = 6,
     invalid_data_size = 7,
     _,
@@ -269,14 +270,14 @@ pub const Client = extern struct {
     opaque_fields: [4]u64,
 };
 
-/// `tb_packet_t` — opaque request state, must remain pinned for the request.
-pub const Packet = extern struct {
+/// `tb_batch_t` — opaque request state, must remain pinned for the request.
+pub const Batch = extern struct {
     user_data: ?*anyopaque,
-    data: ?*anyopaque,
+    data: ?*const anyopaque,
     data_size: u32,
     user_tag: u16,
     operation: Operation,
-    status: PacketStatus,
+    status: BatchStatus,
     opaque_fields: [64]u8,
 };
 
@@ -285,12 +286,12 @@ pub const Packet = extern struct {
 // =============================================================================
 
 /// Per-client completion callback. Invoked on the client's own thread when a
-/// submitted packet completes. `result` is non-null iff `packet.status == .ok`,
+/// submitted batch completes. `result` is non-null iff `batch.status == .ok`,
 /// and is only valid for the duration of the callback — copy it out before
 /// returning.
 pub const CompletionCallback = *const fn (
     userdata: usize,
-    packet: *Packet,
+    batch: *Batch,
     timestamp: u64,
     result: ?[*]const u8,
     result_size: u32,
@@ -305,7 +306,7 @@ pub extern fn tb_client_init(
     completion_callback: CompletionCallback,
 ) callconv(.c) InitStatus;
 
-pub extern fn tb_client_submit(client: *Client, packet: *Packet) callconv(.c) ClientStatus;
+pub extern fn tb_client_submit(client: *Client, batch: *Batch) callconv(.c) ClientStatus;
 
 pub extern fn tb_client_deinit(client: *Client) callconv(.c) ClientStatus;
 
@@ -350,11 +351,11 @@ comptime {
 
     std.debug.assert(@sizeOf(Client) == 32);
 
-    std.debug.assert(@sizeOf(Packet) == 88);
-    std.debug.assert(@offsetOf(Packet, "data") == 8);
-    std.debug.assert(@offsetOf(Packet, "data_size") == 16);
-    std.debug.assert(@offsetOf(Packet, "user_tag") == 20);
-    std.debug.assert(@offsetOf(Packet, "operation") == 22);
-    std.debug.assert(@offsetOf(Packet, "status") == 23);
-    std.debug.assert(@offsetOf(Packet, "opaque_fields") == 24);
+    std.debug.assert(@sizeOf(Batch) == 88);
+    std.debug.assert(@offsetOf(Batch, "data") == 8);
+    std.debug.assert(@offsetOf(Batch, "data_size") == 16);
+    std.debug.assert(@offsetOf(Batch, "user_tag") == 20);
+    std.debug.assert(@offsetOf(Batch, "operation") == 22);
+    std.debug.assert(@offsetOf(Batch, "status") == 23);
+    std.debug.assert(@offsetOf(Batch, "opaque_fields") == 24);
 }

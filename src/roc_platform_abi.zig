@@ -5,7 +5,12 @@
 //!
 //! Hosted argument ownership:
 //! - Roc transfers ownership of refcounted arguments to the hosted function.
-//! - The hosted function must decref owned refcounted arguments when done.
+//! - The hosted function must release owned refcounted arguments when done, using
+//!   the release call named in each hosted symbol's doc comment below.
+//! - Releasing a container releases its elements only when the container's own
+//!   count reaches zero, which is what compiled Roc code does when it drops one
+//!   it owns. Releasing the elements unconditionally double-frees them whenever
+//!   the Roc caller still holds the container.
 //! - If the host stores or returns an argument, it must retain or transfer ownership explicitly.
 //!
 //! Import this file from the platform host and implement the listed hosted symbols
@@ -13,6 +18,33 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+
+/// Runtime representation of Roc's fixed-point `Dec` value.
+///
+/// `num` stores the decimal value scaled by 10^18.
+pub const RocDec = extern struct {
+    num: i128,
+};
+
+comptime {
+    if (@sizeOf(RocDec) != 16) @compileError("RocDec size mismatch");
+    if (@alignOf(RocDec) != 16) @compileError("RocDec alignment mismatch");
+}
+
+pub const RocU8x16 = @Vector(16, u8);
+pub const RocI8x16 = @Vector(16, i8);
+pub const RocU16x8 = @Vector(8, u16);
+pub const RocI16x8 = @Vector(8, i16);
+pub const RocU32x4 = @Vector(4, u32);
+pub const RocI32x4 = @Vector(4, i32);
+pub const RocU64x2 = @Vector(2, u64);
+pub const RocI64x2 = @Vector(2, i64);
+comptime {
+    for (.{ RocU8x16, RocI8x16, RocU16x8, RocI16x8, RocU32x4, RocI32x4, RocU64x2, RocI64x2 }) |T| {
+        if (@sizeOf(T) != 16) @compileError("Roc SIMD size mismatch");
+        if (@alignOf(T) != 16) @compileError("Roc SIMD alignment mismatch");
+    }
+}
 
 /// Runtime representation of an opaque `Box(T)` value.
 pub const RocBox = ?*anyopaque;
@@ -23,16 +55,24 @@ pub const RocBox = ?*anyopaque;
 /// linker symbols declared below (`roc_alloc`, hosted symbols, and provided entrypoints).
 pub const RocHost = extern struct {
     env: *anyopaque,
-    roc_alloc: *const fn (*RocHost, usize, usize) callconv(.c) ?*anyopaque,
+    /// Never returns null; see `roc_alloc` below.
+    roc_alloc: *const fn (*RocHost, usize, usize) callconv(.c) *anyopaque,
     roc_dealloc: *const fn (*RocHost, *anyopaque, usize) callconv(.c) void,
-    roc_realloc: *const fn (*RocHost, *anyopaque, usize, usize) callconv(.c) ?*anyopaque,
+    /// Never returns null; see `roc_realloc` below.
+    roc_realloc: *const fn (*RocHost, *anyopaque, usize, usize) callconv(.c) *anyopaque,
     roc_dbg: *const fn (*RocHost, [*]const u8, usize) callconv(.c) void,
     roc_expect_failed: *const fn (*RocHost, [*]const u8, usize) callconv(.c) void,
     roc_crashed: *const fn (*RocHost, [*]const u8, usize) callconv(.c) void,
 };
 
 /// Private erased-callable function pointer stored in `RocErasedCallablePayload`.
-pub const RocErasedCallableFn = *const fn (*RocHost, ?[*]u8, ?[*]const u8, ?[*]u8) callconv(.c) void;
+///
+/// The final `reuse` pointer is nullable. Non-null must be the callable data
+/// pointer whose inline capture begins at `capture`; it transfers one owned
+/// reference to the callee. The caller must not use or decref that ownership
+/// unit after the call. The callee consumes it exactly once, whether or not the
+/// result can reuse the allocation.
+pub const RocErasedCallableFn = *const fn (*RocHost, ?[*]u8, ?[*]const u8, ?[*]u8, ?[*]u8, *?*const anyopaque) callconv(.c) void;
 
 /// Final-drop callback for inline erased-callable captures.
 pub const RocErasedCallableOnDrop = *const fn (?[*]u8, *RocHost) callconv(.c) void;
@@ -41,6 +81,8 @@ pub const RocErasedCallableOnDrop = *const fn (?[*]u8, *RocHost) callconv(.c) vo
 pub const RocErasedCallablePayload = extern struct {
     callable_fn_ptr: RocErasedCallableFn,
     on_drop: ?RocErasedCallableOnDrop,
+    on_copy: ?*const fn (?[*]u8, isize) callconv(.c) void = null,
+    capture_size: usize = 0,
 };
 
 /// Runtime representation of `Box(function)`.
@@ -78,7 +120,7 @@ pub fn rocErasedCallableAllocate(
     const rc: *isize = @ptrFromInt(@intFromPtr(data) - @sizeOf(isize));
     rc.* = 1;
     const payload: *RocErasedCallablePayload = @ptrCast(@alignCast(data));
-    payload.* = .{ .callable_fn_ptr = callable_fn_ptr, .on_drop = on_drop };
+    payload.* = .{ .callable_fn_ptr = callable_fn_ptr, .on_drop = on_drop, .capture_size = capture_size };
     return data;
 }
 
@@ -305,7 +347,7 @@ pub const RocStr = extern struct {
         const alloc_ptr = self.getAllocationPtr() orelse return;
         const data_addr = @intFromPtr(alloc_ptr);
         const rc: *isize = @ptrFromInt(data_addr - @sizeOf(isize));
-        if (rc.* == 0) return; // REFCOUNT_STATIC_DATA — bytes are in read-only memory
+        if (rc.* == 0) return; // REFCOUNT_STATIC_DATA—bytes are in read-only memory
         const prev = @atomicRmw(isize, rc, .Sub, 1, .monotonic);
         if (prev == 1) {
             const ptr_width = @sizeOf(usize);
@@ -328,7 +370,7 @@ pub const RocStr = extern struct {
         if (self.isSmallStr()) return true;
         const alloc_ptr = self.getAllocationPtr() orelse return true;
         const rc: *const isize = @ptrFromInt(@intFromPtr(alloc_ptr) - @sizeOf(isize));
-        if (rc.* == 0) return true; // REFCOUNT_STATIC_DATA — treated as unique
+        if (rc.* == 0) return true; // REFCOUNT_STATIC_DATA—treated as unique
         return rc.* == 1;
     }
 
@@ -429,6 +471,10 @@ pub fn RocListWith(comptime T: type, comptime elements_refcounted: bool) type {
             const data_ptr = base + header_bytes;
             const rc: *isize = @ptrFromInt(@intFromPtr(data_ptr) - @sizeOf(isize));
             rc.* = 1;
+            if (elements_refcounted) {
+                const count: *usize = @ptrFromInt(@intFromPtr(data_ptr) - (2 * @sizeOf(usize)));
+                count.* = length;
+            }
             return .{
                 .elements_ptr = @ptrCast(@alignCast(data_ptr)),
                 .length = length,
@@ -446,14 +492,48 @@ pub fn RocListWith(comptime T: type, comptime elements_refcounted: bool) type {
             return list;
         }
 
-        /// Decrement the reference count; frees the allocation when it reaches zero.
+        /// Drop this reference to the list allocation, freeing it when this was
+        /// the last one.
+        ///
+        /// Shallow: it never touches the elements. To release an owned list whose
+        /// elements are refcounted, call that list's generated `decrefListOf...`
+        /// helper instead, which drops the elements when this reference is the
+        /// last one and then calls this.
         pub fn decref(self: Self, roc_host: *RocHost) void {
             const alloc_ptr = self.getAllocationPtr() orelse return;
             const data_addr = @intFromPtr(alloc_ptr);
             const rc: *isize = @ptrFromInt(data_addr - @sizeOf(isize));
-            if (rc.* == 0) return; // REFCOUNT_STATIC_DATA — bytes are in read-only memory
+            if (rc.* == 0) return; // REFCOUNT_STATIC_DATA—bytes are in read-only memory
             const prev = @atomicRmw(isize, rc, .Sub, 1, .monotonic);
             if (prev == 1) {
+                const base: *anyopaque = @ptrFromInt(data_addr - header_bytes);
+                roc_host.roc_dealloc(roc_host, base, alloc_align);
+            }
+        }
+
+        /// Recursively release this list and its elements.
+        ///
+        /// The reference-count decrement claims the final reference atomically
+        /// before reading any elements, so concurrent releases cannot skip or
+        /// duplicate element teardown.
+        pub fn deinit(self: Self, roc_host: *RocHost) void {
+            const ItemRelease = if (elements_refcounted) rocReleasePolicy(T) else RocNoopRelease(T);
+            self.deinitWith(ItemRelease, roc_host);
+        }
+
+        /// Recursively release with an explicit compiler-generated item policy.
+        pub fn deinitWith(self: Self, comptime ItemRelease: type, roc_host: *RocHost) void {
+            const alloc_ptr = self.getAllocationPtr() orelse return;
+            const data_addr = @intFromPtr(alloc_ptr);
+            const rc: *isize = @ptrFromInt(data_addr - @sizeOf(isize));
+            if (rc.* == 0) return; // REFCOUNT_STATIC_DATA—elements are in read-only memory
+            const prev = @atomicRmw(isize, rc, .Sub, 1, .acq_rel);
+            if (prev == 1) {
+                if (elements_refcounted) {
+                    for (self.allocationItems()) |item| {
+                        ItemRelease.release(item, roc_host);
+                    }
+                }
                 const base: *anyopaque = @ptrFromInt(data_addr - header_bytes);
                 roc_host.roc_dealloc(roc_host, base, alloc_align);
             }
@@ -471,7 +551,7 @@ pub fn RocListWith(comptime T: type, comptime elements_refcounted: bool) type {
         pub fn isUnique(self: Self) bool {
             const alloc_ptr = self.getAllocationPtr() orelse return true;
             const rc: *const isize = @ptrFromInt(@intFromPtr(alloc_ptr) - @sizeOf(isize));
-            if (rc.* == 0) return true; // REFCOUNT_STATIC_DATA — treated as unique
+            if (rc.* == 0) return true; // REFCOUNT_STATIC_DATA—treated as unique
             return rc.* == 1;
         }
 
@@ -480,6 +560,147 @@ pub fn RocListWith(comptime T: type, comptime elements_refcounted: bool) type {
             const alloc_ptr = self.getAllocationPtr() orelse return false;
             const rc: *const isize = @ptrFromInt(@intFromPtr(alloc_ptr) - @sizeOf(isize));
             return rc.* == 1;
+        }
+    };
+}
+
+/// A Roc list whose items have a type only the application knows.
+///
+/// This host knows neither the size of an item nor whether items are
+/// refcounted, so it cannot read an item, allocate such a list, or release
+/// one. It can move the list, retain it, and pass it back to Roc. To release
+/// it, pass it to a Roc function that takes ownership of it.
+pub const RocOpaqueList = extern struct {
+    elements_ptr: ?*anyopaque,
+    length: usize,
+    capacity_or_alloc_ptr: usize,
+
+    /// Return the number of items in the list.
+    pub fn len(self: RocOpaqueList) usize {
+        return self.length;
+    }
+
+    /// Return true if the list has zero items.
+    pub fn isEmpty(self: RocOpaqueList) bool {
+        return self.length == 0;
+    }
+
+    /// Increment the reference count by `amount`.
+    pub fn incref(self: RocOpaqueList, amount: isize) void {
+        retainListAllocation(self.elements_ptr, self.capacity_or_alloc_ptr, amount);
+    }
+};
+
+/// A Roc list whose items hold opaque Roc values.
+///
+/// The items have a known layout, so the host can read them. Whether the
+/// opaque values inside them are refcounted is known only to Roc, and the
+/// list's allocation header depends on it, so the host cannot allocate such
+/// a list or release one. It can move the list, retain it, and pass it back
+/// to Roc. To release it, pass it to a Roc function that takes ownership of
+/// it.
+pub fn RocHeldList(comptime T: type) type {
+    return extern struct {
+        elements_ptr: ?[*]T,
+        length: usize,
+        capacity_or_alloc_ptr: usize,
+
+        const Self = @This();
+
+        /// Return the list items as a `[]const T` slice.
+        pub fn items(self: Self) []const T {
+            if (self.elements_ptr) |ptr| return ptr[0..self.length];
+            return &[_]T{};
+        }
+
+        /// Return the number of items in the list.
+        pub fn len(self: Self) usize {
+            return self.length;
+        }
+
+        /// Return true if the list has zero items.
+        pub fn isEmpty(self: Self) bool {
+            return self.length == 0;
+        }
+
+        /// Increment the reference count by `amount`.
+        pub fn incref(self: Self, amount: isize) void {
+            retainListAllocation(@ptrCast(self.elements_ptr), self.capacity_or_alloc_ptr, amount);
+        }
+    };
+}
+
+/// Add `amount` references to a list's allocation. The refcount slot sits
+/// directly before the allocation's first item whatever the item type is,
+/// and a seamless slice names its allocation in `capacity_or_alloc_ptr`.
+fn retainListAllocation(elements_ptr: ?*anyopaque, capacity_or_alloc_ptr: usize, amount: isize) void {
+    const alloc_addr = if ((capacity_or_alloc_ptr & 1) != 0)
+        capacity_or_alloc_ptr & ~@as(usize, 1)
+    else
+        @intFromPtr(elements_ptr);
+    if (alloc_addr == 0) return;
+    const rc: *isize = @ptrFromInt(alloc_addr - @sizeOf(isize));
+    if (rc.* == 0) return; // REFCOUNT_STATIC_DATA
+    _ = @atomicRmw(isize, rc, .Add, amount, .monotonic);
+}
+
+pub fn RocNoopRelease(comptime T: type) type {
+    return struct {
+        pub fn release(value: T, roc_host: *RocHost) void {
+            _ = value;
+            _ = roc_host;
+        }
+    };
+}
+
+/// A zero-runtime-storage release policy for one Roc string.
+pub const RocStrRelease = struct {
+    pub fn release(value: RocStr, roc_host: *RocHost) void {
+        value.decref(roc_host);
+    }
+};
+
+/// Compose a list release policy from its item release policy.
+pub fn RocListRelease(comptime ListType: type, comptime ItemRelease: type) type {
+    return struct {
+        pub fn release(value: ListType, roc_host: *RocHost) void {
+            value.deinitWith(ItemRelease, roc_host);
+        }
+    };
+}
+
+/// Release only a list spine whose elements contain no Roc references.
+pub fn RocListSpineRelease(comptime ListType: type) type {
+    return struct {
+        pub fn release(value: ListType, roc_host: *RocHost) void {
+            value.decref(roc_host);
+        }
+    };
+}
+
+pub const RocErasedCallableRelease = struct {
+    pub fn release(value: RocErasedCallable, roc_host: *RocHost) void {
+        decrefErasedCallable(value, roc_host);
+    }
+};
+
+pub fn RocBoxRelease(comptime ValueType: type, comptime PayloadType: type, comptime PayloadRelease: type) type {
+    return struct {
+        fn releasePayload(data_ptr: ?*anyopaque, roc_host: *RocHost) callconv(.c) void {
+            const payload: *PayloadType = @ptrCast(@alignCast(data_ptr orelse return));
+            PayloadRelease.release(payload.*, roc_host);
+        }
+
+        pub fn release(value: ValueType, roc_host: *RocHost) void {
+            decrefBoxWith(@ptrCast(value), @alignOf(PayloadType), true, &releasePayload, roc_host);
+        }
+    };
+}
+
+pub fn RocBoxSpineRelease(comptime ValueType: type, comptime PayloadType: type) type {
+    return struct {
+        pub fn release(value: ValueType, roc_host: *RocHost) void {
+            decrefBoxWith(@ptrCast(value), @alignOf(PayloadType), false, null, roc_host);
         }
     };
 }
@@ -565,10 +786,40 @@ pub const RocEnv = struct {
 };
 
 /// Element type for TigerBeetle.CreateAccountResult
-pub const TigerBeetleCreateAccountResult = extern struct {
+pub const TigerBeetleCreateAccountResult = if (@sizeOf(usize) == 4) extern struct {
     timestamp: u64,
     status: u32,
     _pad0: [4]u8,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        _ = value;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        _ = value;
+        _ = amount;
+    }
+} else extern struct {
+    timestamp: u64,
+    status: u32,
+    _pad0: [4]u8,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        _ = value;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        _ = value;
+        _ = amount;
+    }
 };
 
 comptime {
@@ -583,7 +834,7 @@ comptime {
 }
 
 /// Element type for TigerBeetle.Account
-pub const TigerBeetleAccount = extern struct {
+pub const TigerBeetleAccount = if (@sizeOf(usize) == 4) extern struct {
     id: u128,
     debits_pending: u128,
     debits_posted: u128,
@@ -597,6 +848,46 @@ pub const TigerBeetleAccount = extern struct {
     code: u16,
     flags: u16,
     timestamp: u64,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        _ = value;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        _ = value;
+        _ = amount;
+    }
+} else extern struct {
+    id: u128,
+    debits_pending: u128,
+    debits_posted: u128,
+    credits_pending: u128,
+    credits_posted: u128,
+    user_data_128: u128,
+    user_data_64: u64,
+    user_data_32: u32,
+    reserved: u32,
+    ledger: u32,
+    code: u16,
+    flags: u16,
+    timestamp: u64,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        _ = value;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        _ = value;
+        _ = amount;
+    }
 };
 
 comptime {
@@ -611,10 +902,40 @@ comptime {
 }
 
 /// Element type for TigerBeetle.CreateTransferResult
-pub const TigerBeetleCreateTransferResult = extern struct {
+pub const TigerBeetleCreateTransferResult = if (@sizeOf(usize) == 4) extern struct {
     timestamp: u64,
     status: u32,
     _pad0: [4]u8,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        _ = value;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        _ = value;
+        _ = amount;
+    }
+} else extern struct {
+    timestamp: u64,
+    status: u32,
+    _pad0: [4]u8,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        _ = value;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        _ = value;
+        _ = amount;
+    }
 };
 
 comptime {
@@ -629,7 +950,7 @@ comptime {
 }
 
 /// Element type for TigerBeetle.Transfer
-pub const TigerBeetleTransfer = extern struct {
+pub const TigerBeetleTransfer = if (@sizeOf(usize) == 4) extern struct {
     id: u128,
     debit_account_id: u128,
     credit_account_id: u128,
@@ -643,6 +964,46 @@ pub const TigerBeetleTransfer = extern struct {
     code: u16,
     flags: u16,
     timestamp: u64,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        _ = value;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        _ = value;
+        _ = amount;
+    }
+} else extern struct {
+    id: u128,
+    debit_account_id: u128,
+    credit_account_id: u128,
+    amount: u128,
+    pending_id: u128,
+    user_data_128: u128,
+    user_data_64: u64,
+    user_data_32: u32,
+    timeout: u32,
+    ledger: u32,
+    code: u16,
+    flags: u16,
+    timestamp: u64,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        _ = value;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        _ = value;
+        _ = amount;
+    }
 };
 
 comptime {
@@ -657,7 +1018,7 @@ comptime {
 }
 
 /// Element type for TigerBeetle.AccountFilter
-pub const TigerBeetleAccountFilter = extern struct {
+pub const TigerBeetleAccountFilter = if (@sizeOf(usize) == 4) extern struct {
     account_id: u128,
     user_data_128: u128,
     user_data_64: u64,
@@ -668,6 +1029,39 @@ pub const TigerBeetleAccountFilter = extern struct {
     timestamp_max: u64,
     limit: u32,
     flags: u32,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        value.reserved.decref(roc_host);
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        value.reserved.incref(amount);
+    }
+} else extern struct {
+    account_id: u128,
+    user_data_128: u128,
+    user_data_64: u64,
+    user_data_32: u32,
+    code: u16,
+    reserved: TigerBeetleReserved58,
+    timestamp_min: u64,
+    timestamp_max: u64,
+    limit: u32,
+    flags: u32,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        value.reserved.decref(roc_host);
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        value.reserved.incref(amount);
+    }
 };
 
 comptime {
@@ -682,9 +1076,17 @@ comptime {
 }
 
 /// Element type for TigerBeetle.Reserved58
-pub const TigerBeetleReserved58 = extern struct {
+pub const TigerBeetleReserved58 = if (@sizeOf(usize) == 4) extern struct {
     _0: u16,
     _1: u16,
+    _2: u16,
+    _3: u16,
+    _4: u16,
+    _5: u16,
+    _6: u16,
+    _7: u16,
+    _8: u16,
+    _9: u16,
     _10: u16,
     _11: u16,
     _12: u16,
@@ -695,7 +1097,6 @@ pub const TigerBeetleReserved58 = extern struct {
     _17: u16,
     _18: u16,
     _19: u16,
-    _2: u16,
     _20: u16,
     _21: u16,
     _22: u16,
@@ -705,6 +1106,23 @@ pub const TigerBeetleReserved58 = extern struct {
     _26: u16,
     _27: u16,
     _28: u16,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        _ = value;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        _ = value;
+        _ = amount;
+    }
+} else extern struct {
+    _0: u16,
+    _1: u16,
+    _2: u16,
     _3: u16,
     _4: u16,
     _5: u16,
@@ -712,6 +1130,38 @@ pub const TigerBeetleReserved58 = extern struct {
     _7: u16,
     _8: u16,
     _9: u16,
+    _10: u16,
+    _11: u16,
+    _12: u16,
+    _13: u16,
+    _14: u16,
+    _15: u16,
+    _16: u16,
+    _17: u16,
+    _18: u16,
+    _19: u16,
+    _20: u16,
+    _21: u16,
+    _22: u16,
+    _23: u16,
+    _24: u16,
+    _25: u16,
+    _26: u16,
+    _27: u16,
+    _28: u16,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        _ = value;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        _ = value;
+        _ = amount;
+    }
 };
 
 comptime {
@@ -726,13 +1176,46 @@ comptime {
 }
 
 /// Element type for TigerBeetle.AccountBalance
-pub const TigerBeetleAccountBalance = extern struct {
+pub const TigerBeetleAccountBalance = if (@sizeOf(usize) == 4) extern struct {
     debits_pending: u128,
     debits_posted: u128,
     credits_pending: u128,
     credits_posted: u128,
     timestamp: u64,
     _pad0: [56]u8,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        _ = value;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        _ = value;
+        _ = amount;
+    }
+} else extern struct {
+    debits_pending: u128,
+    debits_posted: u128,
+    credits_pending: u128,
+    credits_posted: u128,
+    timestamp: u64,
+    _pad0: [56]u8,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        _ = value;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        _ = value;
+        _ = amount;
+    }
 };
 
 comptime {
@@ -743,33 +1226,11 @@ comptime {
     if (@sizeOf(usize) == 4) {
         if (@sizeOf(TigerBeetleAccountBalance) != 128) @compileError("TigerBeetleAccountBalance size mismatch");
         if (@alignOf(TigerBeetleAccountBalance) != 16) @compileError("TigerBeetleAccountBalance alignment mismatch");
-    }
-}
-
-/// Element type for TigerBeetle.Reserved56
-pub const TigerBeetleReserved56 = extern struct {
-    _0: u64,
-    _1: u64,
-    _2: u64,
-    _3: u64,
-    _4: u64,
-    _5: u64,
-    _6: u64,
-};
-
-comptime {
-    if (@sizeOf(usize) == 8) {
-        if (@sizeOf(TigerBeetleReserved56) != 56) @compileError("TigerBeetleReserved56 size mismatch");
-        if (@alignOf(TigerBeetleReserved56) != 8) @compileError("TigerBeetleReserved56 alignment mismatch");
-    }
-    if (@sizeOf(usize) == 4) {
-        if (@sizeOf(TigerBeetleReserved56) != 56) @compileError("TigerBeetleReserved56 size mismatch");
-        if (@alignOf(TigerBeetleReserved56) != 8) @compileError("TigerBeetleReserved56 alignment mismatch");
     }
 }
 
 /// Element type for TigerBeetle.QueryFilter
-pub const TigerBeetleQueryFilter = extern struct {
+pub const TigerBeetleQueryFilter = if (@sizeOf(usize) == 4) extern struct {
     user_data_128: u128,
     user_data_64: u64,
     user_data_32: u32,
@@ -779,7 +1240,40 @@ pub const TigerBeetleQueryFilter = extern struct {
     timestamp_min: u64,
     timestamp_max: u64,
     limit: u32,
-    _pad0: [4]u8,
+    flags: u32,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        value.reserved.decref(roc_host);
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        value.reserved.incref(amount);
+    }
+} else extern struct {
+    user_data_128: u128,
+    user_data_64: u64,
+    user_data_32: u32,
+    ledger: u32,
+    code: u16,
+    reserved: TigerBeetleReserved6,
+    timestamp_min: u64,
+    timestamp_max: u64,
+    limit: u32,
+    flags: u32,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        value.reserved.decref(roc_host);
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        value.reserved.incref(amount);
+    }
 };
 
 comptime {
@@ -794,10 +1288,40 @@ comptime {
 }
 
 /// Element type for TigerBeetle.Reserved6
-pub const TigerBeetleReserved6 = extern struct {
+pub const TigerBeetleReserved6 = if (@sizeOf(usize) == 4) extern struct {
     _0: u16,
     _1: u16,
     _2: u16,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        _ = value;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        _ = value;
+        _ = amount;
+    }
+} else extern struct {
+    _0: u16,
+    _1: u16,
+    _2: u16,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        _ = value;
+        _ = roc_host;
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        _ = value;
+        _ = amount;
+    }
 };
 
 comptime {
@@ -811,64 +1335,104 @@ comptime {
     }
 }
 
-/// Element type for __AnonStruct30
-pub const __AnonStruct30 = if (@sizeOf(usize) == 4) extern struct {
+/// Element type for __AnonStruct_784edbe3c92b3574
+pub const __AnonStruct_784edbe3c92b3574 = if (@sizeOf(usize) == 4) extern struct {
     cluster_id: u128,
     addresses: RocStr,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        value.addresses.decref(roc_host);
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        value.addresses.incref(amount);
+    }
 } else extern struct {
     cluster_id: u128,
     addresses: RocStr,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        value.addresses.decref(roc_host);
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        value.addresses.incref(amount);
+    }
 };
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(__AnonStruct30) != 48) @compileError("__AnonStruct30 size mismatch");
-        if (@alignOf(__AnonStruct30) != 16) @compileError("__AnonStruct30 alignment mismatch");
+        if (@sizeOf(__AnonStruct_784edbe3c92b3574) != 48) @compileError("__AnonStruct_784edbe3c92b3574 size mismatch");
+        if (@alignOf(__AnonStruct_784edbe3c92b3574) != 16) @compileError("__AnonStruct_784edbe3c92b3574 alignment mismatch");
     }
     if (@sizeOf(usize) == 4) {
-        if (@sizeOf(__AnonStruct30) != 32) @compileError("__AnonStruct30 size mismatch");
-        if (@alignOf(__AnonStruct30) != 16) @compileError("__AnonStruct30 alignment mismatch");
+        if (@sizeOf(__AnonStruct_784edbe3c92b3574) != 32) @compileError("__AnonStruct_784edbe3c92b3574 size mismatch");
+        if (@alignOf(__AnonStruct_784edbe3c92b3574) != 16) @compileError("__AnonStruct_784edbe3c92b3574 alignment mismatch");
     }
 }
 
 /// Tag discriminant for Try.
-pub const TryType28Tag = enum(u8) {
+pub const TigerBeetleClientInitResultTag = enum(u8) {
     Err = 0,
     Ok = 1,
 };
 
 /// Payload union for Try.
-pub const TryType28Payload = extern union {
+pub const TigerBeetleClientInitResultPayload = extern union {
     err: AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected,
     ok: [0]u8,
 };
 
 /// Tag union: Try
-pub const TryType28 = if (@sizeOf(usize) == 4) extern struct {
+pub const TigerBeetleClientInitResult = if (@sizeOf(usize) == 4) extern struct {
     payload: [1]u8 align(1),
-    tag: TryType28Tag,
+    tag: TigerBeetleClientInitResultTag,
     pub fn payload_err(self: *const @This()) AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected {
         const ptr: *const AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected = @ptrCast(@alignCast(&self.payload));
         return ptr.*;
     }
+    /// Recursively decrement Roc-owned payloads.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        decrefTigerBeetleClientInitResult(self, roc_host);
+    }
+
+    /// Increment Roc-owned payloads.
+    pub fn incref(self: @This(), amount: isize) void {
+        increfTigerBeetleClientInitResult(self, amount);
+    }
 } else extern struct {
-    payload: TryType28Payload,
-    tag: TryType28Tag,
+    payload: TigerBeetleClientInitResultPayload,
+    tag: TigerBeetleClientInitResultTag,
     pub fn payload_err(self: *const @This()) AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected {
         return self.payload.err;
+    }
+    /// Recursively decrement Roc-owned payloads.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        decrefTigerBeetleClientInitResult(self, roc_host);
+    }
+
+    /// Increment Roc-owned payloads.
+    pub fn incref(self: @This(), amount: isize) void {
+        increfTigerBeetleClientInitResult(self, amount);
     }
 };
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(TryType28) != 2) @compileError("TryType28 size mismatch");
-        if (@alignOf(TryType28) != 1) @compileError("TryType28 alignment mismatch");
-        if (@offsetOf(TryType28, "tag") != 1) @compileError("TryType28 tag offset mismatch");
+        if (@sizeOf(TigerBeetleClientInitResult) != 2) @compileError("TigerBeetleClientInitResult size mismatch");
+        if (@alignOf(TigerBeetleClientInitResult) != 1) @compileError("TigerBeetleClientInitResult alignment mismatch");
+        if (@offsetOf(TigerBeetleClientInitResult, "tag") != 1) @compileError("TigerBeetleClientInitResult tag offset mismatch");
     }
     if (@sizeOf(usize) == 4) {
-        if (@sizeOf(TryType28) != 2) @compileError("TryType28 size mismatch");
-        if (@alignOf(TryType28) != 1) @compileError("TryType28 alignment mismatch");
-        if (@offsetOf(TryType28, "tag") != 1) @compileError("TryType28 tag offset mismatch");
+        if (@sizeOf(TigerBeetleClientInitResult) != 2) @compileError("TigerBeetleClientInitResult size mismatch");
+        if (@alignOf(TigerBeetleClientInitResult) != 1) @compileError("TigerBeetleClientInitResult alignment mismatch");
+        if (@offsetOf(TigerBeetleClientInitResult, "tag") != 1) @compileError("TigerBeetleClientInitResult tag offset mismatch");
     }
 }
 
@@ -880,46 +1444,27 @@ pub const AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrS
     out_of_memory = 3,
     system_resources = 4,
     unexpected = 5,
-};
-
-/// Tag discriminant for Try.
-pub const TryType36Tag = enum(u8) {
-    Err = 0,
-    Ok = 1,
-};
-
-/// Payload union for Try.
-pub const TryType36Payload = extern union {
-    err: i32,
-    ok: [0]u8,
-};
-
-/// Tag union: Try
-pub const TryType36 = if (@sizeOf(usize) == 4) extern struct {
-    payload: [4]u8 align(4),
-    tag: TryType36Tag,
-    pub fn payload_err(self: *const @This()) i32 {
-        const ptr: *const i32 = @ptrCast(@alignCast(&self.payload));
-        return ptr.*;
+    /// Recursively decrement Roc-owned payloads.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        _ = self;
+        _ = roc_host;
     }
-} else extern struct {
-    payload: TryType36Payload,
-    tag: TryType36Tag,
-    pub fn payload_err(self: *const @This()) i32 {
-        return self.payload.err;
+
+    /// Increment Roc-owned payloads.
+    pub fn incref(self: @This(), amount: isize) void {
+        _ = self;
+        _ = amount;
     }
 };
 
 comptime {
     if (@sizeOf(usize) == 8) {
-        if (@sizeOf(TryType36) != 8) @compileError("TryType36 size mismatch");
-        if (@alignOf(TryType36) != 4) @compileError("TryType36 alignment mismatch");
-        if (@offsetOf(TryType36, "tag") != 4) @compileError("TryType36 tag offset mismatch");
+        if (@sizeOf(AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected) != 1) @compileError("AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected size mismatch");
+        if (@alignOf(AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected) != 1) @compileError("AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected alignment mismatch");
     }
     if (@sizeOf(usize) == 4) {
-        if (@sizeOf(TryType36) != 8) @compileError("TryType36 size mismatch");
-        if (@alignOf(TryType36) != 4) @compileError("TryType36 alignment mismatch");
-        if (@offsetOf(TryType36, "tag") != 4) @compileError("TryType36 tag offset mismatch");
+        if (@sizeOf(AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected) != 1) @compileError("AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected size mismatch");
+        if (@alignOf(AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected) != 1) @compileError("AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected alignment mismatch");
     }
 }
 
@@ -937,44 +1482,37 @@ pub const StdoutLineArgs = extern struct {
     arg0: RocStr,
 };
 
-/// Arguments for TigerBeetle.Client.create_accounts!
-/// Roc signature: TigerBeetle.Client, List(TigerBeetle.Account) => List(TigerBeetle.CreateAccountResult)
-/// Refcounted fields are owned by the hosted function.
-pub const TigerBeetleClientCreate_accountsArgs = extern struct {
-    arg0: void,
-    arg1: RocListWith(TigerBeetleAccount, false),
-};
-
-/// Arguments for TigerBeetle.Client.create_transfers!
-/// Roc signature: TigerBeetle.Client, List(TigerBeetle.Transfer) => List(TigerBeetle.CreateTransferResult)
-/// Refcounted fields are owned by the hosted function.
-pub const TigerBeetleClientCreate_transfersArgs = extern struct {
-    arg0: void,
-    arg1: RocListWith(TigerBeetleTransfer, false),
-};
-
-/// Arguments for TigerBeetle.Client.get_account_balances!
-/// Roc signature: TigerBeetle.Client, TigerBeetle.AccountFilter => List(TigerBeetle.AccountBalance)
-/// Refcounted fields are owned by the hosted function.
-pub const TigerBeetleClientGet_account_balancesArgs = extern struct {
-    arg0: void,
-    arg1: TigerBeetleAccountFilter,
-};
-
-/// Arguments for TigerBeetle.Client.get_account_transfers!
-/// Roc signature: TigerBeetle.Client, TigerBeetle.AccountFilter => List(TigerBeetle.Transfer)
-/// Refcounted fields are owned by the hosted function.
-pub const TigerBeetleClientGet_account_transfersArgs = extern struct {
-    arg0: void,
-    arg1: TigerBeetleAccountFilter,
-};
-
 /// Arguments for TigerBeetle.Client.init!
 /// Roc signature: { addresses : Str, cluster_id : U128 } => Try(TigerBeetle.Client, [AddressInvalid, AddressLimitExceeded, NetworkSubsystem, OutOfMemory, SystemResources, Unexpected])
 /// Refcounted fields are owned by the hosted function.
-pub const TigerBeetleClientInitArgs = extern struct {
+pub const TigerBeetleClientInitArgs = if (@sizeOf(usize) == 4) extern struct {
     cluster_id: u128,
     addresses: RocStr,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        value.addresses.decref(roc_host);
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        value.addresses.incref(amount);
+    }
+} else extern struct {
+    cluster_id: u128,
+    addresses: RocStr,
+    /// Recursively decrement Roc-owned fields.
+    pub fn decref(self: @This(), roc_host: *RocHost) void {
+        const value = self;
+        value.addresses.decref(roc_host);
+    }
+
+    /// Increment Roc-owned fields.
+    pub fn incref(self: @This(), amount: isize) void {
+        const value = self;
+        value.addresses.incref(amount);
+    }
 };
 
 comptime {
@@ -982,253 +1520,211 @@ comptime {
         if (@sizeOf(TigerBeetleClientInitArgs) != 48) @compileError("TigerBeetleClientInitArgs size mismatch");
         if (@alignOf(TigerBeetleClientInitArgs) != 16) @compileError("TigerBeetleClientInitArgs alignment mismatch");
     }
+    if (@sizeOf(usize) == 4) {
+        if (@sizeOf(TigerBeetleClientInitArgs) != 32) @compileError("TigerBeetleClientInitArgs size mismatch");
+        if (@alignOf(TigerBeetleClientInitArgs) != 16) @compileError("TigerBeetleClientInitArgs alignment mismatch");
+    }
 }
+
+/// Arguments for TigerBeetle.Client.create_accounts!
+/// Roc signature: TigerBeetle.Client, List(TigerBeetle.Account) => List(TigerBeetle.CreateAccountResult)
+/// Refcounted fields are owned by the hosted function.
+pub const TigerBeetleClientCreate_accountsArgs = extern struct {
+    arg0: RocListWith(TigerBeetleAccount, false),
+};
+
+/// Arguments for TigerBeetle.Client.create_transfers!
+/// Roc signature: TigerBeetle.Client, List(TigerBeetle.Transfer) => List(TigerBeetle.CreateTransferResult)
+/// Refcounted fields are owned by the hosted function.
+pub const TigerBeetleClientCreate_transfersArgs = extern struct {
+    arg0: RocListWith(TigerBeetleTransfer, false),
+};
+
+/// Arguments for TigerBeetle.Client.get_account_balances!
+/// Roc signature: TigerBeetle.Client, TigerBeetle.AccountFilter => List(TigerBeetle.AccountBalance)
+/// Refcounted fields are owned by the hosted function.
+pub const TigerBeetleClientGet_account_balancesArgs = extern struct {
+    arg0: TigerBeetleAccountFilter,
+};
+
+/// Arguments for TigerBeetle.Client.get_account_transfers!
+/// Roc signature: TigerBeetle.Client, TigerBeetle.AccountFilter => List(TigerBeetle.Transfer)
+/// Refcounted fields are owned by the hosted function.
+pub const TigerBeetleClientGet_account_transfersArgs = extern struct {
+    arg0: TigerBeetleAccountFilter,
+};
 
 /// Arguments for TigerBeetle.Client.lookup_accounts!
 /// Roc signature: TigerBeetle.Client, List(U128) => List(TigerBeetle.Account)
 /// Refcounted fields are owned by the hosted function.
 pub const TigerBeetleClientLookup_accountsArgs = extern struct {
-    arg0: void,
-    arg1: RocListWith(u128, false),
+    arg0: RocListWith(u128, false),
 };
 
 /// Arguments for TigerBeetle.Client.lookup_transfers!
 /// Roc signature: TigerBeetle.Client, List(U128) => List(TigerBeetle.Transfer)
 /// Refcounted fields are owned by the hosted function.
 pub const TigerBeetleClientLookup_transfersArgs = extern struct {
-    arg0: void,
-    arg1: RocListWith(u128, false),
+    arg0: RocListWith(u128, false),
 };
 
 /// Arguments for TigerBeetle.Client.query_accounts!
 /// Roc signature: TigerBeetle.Client, TigerBeetle.QueryFilter => List(TigerBeetle.Account)
 /// Refcounted fields are owned by the hosted function.
 pub const TigerBeetleClientQuery_accountsArgs = extern struct {
-    arg0: void,
-    arg1: TigerBeetleQueryFilter,
+    arg0: TigerBeetleQueryFilter,
 };
 
 /// Arguments for TigerBeetle.Client.query_transfers!
 /// Roc signature: TigerBeetle.Client, TigerBeetle.QueryFilter => List(TigerBeetle.Transfer)
 /// Refcounted fields are owned by the hosted function.
 pub const TigerBeetleClientQuery_transfersArgs = extern struct {
-    arg0: void,
-    arg1: TigerBeetleQueryFilter,
+    arg0: TigerBeetleQueryFilter,
 };
 
-// =============================================================================
+// Platform Type Aliases
+
+pub const TigerBeetleClientInitArg0 = __AnonStruct_784edbe3c92b3574;
+pub const TigerBeetleClientInitErr = AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected;
+pub const TigerBeetleClientCreate_accountsArg1 = TigerBeetleAccount;
+pub const TigerBeetleClientCreate_accounts = TigerBeetleCreateAccountResult;
+pub const TigerBeetleClientCreate_transfersArg1 = TigerBeetleTransfer;
+pub const TigerBeetleClientCreate_transfers = TigerBeetleCreateTransferResult;
+pub const TigerBeetleClientGet_account_balances = TigerBeetleAccountBalance;
+pub const TigerBeetleClientGet_account_transfers = TigerBeetleTransfer;
+pub const TigerBeetleClientLookup_accounts = TigerBeetleAccount;
+pub const TigerBeetleClientLookup_transfers = TigerBeetleTransfer;
+pub const TigerBeetleClientQuery_accounts = TigerBeetleAccount;
+pub const TigerBeetleClientQuery_transfers = TigerBeetleTransfer;
+
 // Generated Refcount Helpers
-// =============================================================================
 
-/// Recursively decrement Roc-owned fields in TigerBeetleCreateAccountResult.
-pub fn decrefTigerBeetleCreateAccountResult(value: TigerBeetleCreateAccountResult, roc_host: *RocHost) void {
-    _ = value;
-    _ = roc_host;
-}
+pub const TigerBeetleCreateAccountResultRelease = struct {
+    pub fn release(value: TigerBeetleCreateAccountResult, roc_host: *RocHost) void {
+        value.decref(roc_host);
+    }
+};
 
-/// Increment Roc-owned fields in TigerBeetleCreateAccountResult.
-pub fn increfTigerBeetleCreateAccountResult(value: TigerBeetleCreateAccountResult, amount: isize) void {
-    _ = value;
-    _ = amount;
-}
+pub const TigerBeetleAccountRelease = struct {
+    pub fn release(value: TigerBeetleAccount, roc_host: *RocHost) void {
+        value.decref(roc_host);
+    }
+};
 
-/// Recursively decrement Roc-owned fields in TigerBeetleAccount.
-pub fn decrefTigerBeetleAccount(value: TigerBeetleAccount, roc_host: *RocHost) void {
-    _ = value;
-    _ = roc_host;
-}
+pub const TigerBeetleCreateTransferResultRelease = struct {
+    pub fn release(value: TigerBeetleCreateTransferResult, roc_host: *RocHost) void {
+        value.decref(roc_host);
+    }
+};
 
-/// Increment Roc-owned fields in TigerBeetleAccount.
-pub fn increfTigerBeetleAccount(value: TigerBeetleAccount, amount: isize) void {
-    _ = value;
-    _ = amount;
-}
+pub const TigerBeetleTransferRelease = struct {
+    pub fn release(value: TigerBeetleTransfer, roc_host: *RocHost) void {
+        value.decref(roc_host);
+    }
+};
 
-/// Recursively decrement Roc-owned fields in TigerBeetleCreateTransferResult.
-pub fn decrefTigerBeetleCreateTransferResult(value: TigerBeetleCreateTransferResult, roc_host: *RocHost) void {
-    _ = value;
-    _ = roc_host;
-}
+pub const TigerBeetleAccountFilterRelease = struct {
+    pub fn release(value: TigerBeetleAccountFilter, roc_host: *RocHost) void {
+        value.decref(roc_host);
+    }
+};
 
-/// Increment Roc-owned fields in TigerBeetleCreateTransferResult.
-pub fn increfTigerBeetleCreateTransferResult(value: TigerBeetleCreateTransferResult, amount: isize) void {
-    _ = value;
-    _ = amount;
-}
+pub const TigerBeetleReserved58Release = struct {
+    pub fn release(value: TigerBeetleReserved58, roc_host: *RocHost) void {
+        value.decref(roc_host);
+    }
+};
 
-/// Recursively decrement Roc-owned fields in TigerBeetleTransfer.
-pub fn decrefTigerBeetleTransfer(value: TigerBeetleTransfer, roc_host: *RocHost) void {
-    _ = value;
-    _ = roc_host;
-}
+pub const TigerBeetleAccountBalanceRelease = struct {
+    pub fn release(value: TigerBeetleAccountBalance, roc_host: *RocHost) void {
+        value.decref(roc_host);
+    }
+};
 
-/// Increment Roc-owned fields in TigerBeetleTransfer.
-pub fn increfTigerBeetleTransfer(value: TigerBeetleTransfer, amount: isize) void {
-    _ = value;
-    _ = amount;
-}
+pub const TigerBeetleQueryFilterRelease = struct {
+    pub fn release(value: TigerBeetleQueryFilter, roc_host: *RocHost) void {
+        value.decref(roc_host);
+    }
+};
 
-/// Recursively decrement Roc-owned fields in TigerBeetleAccountFilter.
-pub fn decrefTigerBeetleAccountFilter(value: TigerBeetleAccountFilter, roc_host: *RocHost) void {
-    decrefTigerBeetleReserved58(value.reserved, roc_host);
-}
+pub const TigerBeetleReserved6Release = struct {
+    pub fn release(value: TigerBeetleReserved6, roc_host: *RocHost) void {
+        value.decref(roc_host);
+    }
+};
 
-/// Increment Roc-owned fields in TigerBeetleAccountFilter.
-pub fn increfTigerBeetleAccountFilter(value: TigerBeetleAccountFilter, amount: isize) void {
-    increfTigerBeetleReserved58(value.reserved, amount);
-}
-
-/// Recursively decrement Roc-owned fields in TigerBeetleReserved58.
-pub fn decrefTigerBeetleReserved58(value: TigerBeetleReserved58, roc_host: *RocHost) void {
-    _ = value;
-    _ = roc_host;
-}
-
-/// Increment Roc-owned fields in TigerBeetleReserved58.
-pub fn increfTigerBeetleReserved58(value: TigerBeetleReserved58, amount: isize) void {
-    _ = value;
-    _ = amount;
-}
-
-/// Recursively decrement Roc-owned fields in TigerBeetleAccountBalance.
-pub fn decrefTigerBeetleAccountBalance(value: TigerBeetleAccountBalance, roc_host: *RocHost) void {
-    _ = value;
-    _ = roc_host;
-}
-
-/// Increment Roc-owned fields in TigerBeetleAccountBalance.
-pub fn increfTigerBeetleAccountBalance(value: TigerBeetleAccountBalance, amount: isize) void {
-    _ = value;
-    _ = amount;
-}
-
-/// Recursively decrement Roc-owned fields in TigerBeetleReserved56.
-pub fn decrefTigerBeetleReserved56(value: TigerBeetleReserved56, roc_host: *RocHost) void {
-    _ = value;
-    _ = roc_host;
-}
-
-/// Increment Roc-owned fields in TigerBeetleReserved56.
-pub fn increfTigerBeetleReserved56(value: TigerBeetleReserved56, amount: isize) void {
-    _ = value;
-    _ = amount;
-}
-
-/// Recursively decrement Roc-owned fields in TigerBeetleQueryFilter.
-pub fn decrefTigerBeetleQueryFilter(value: TigerBeetleQueryFilter, roc_host: *RocHost) void {
-    decrefTigerBeetleReserved6(value.reserved, roc_host);
-}
-
-/// Increment Roc-owned fields in TigerBeetleQueryFilter.
-pub fn increfTigerBeetleQueryFilter(value: TigerBeetleQueryFilter, amount: isize) void {
-    increfTigerBeetleReserved6(value.reserved, amount);
-}
-
-/// Recursively decrement Roc-owned fields in TigerBeetleReserved6.
-pub fn decrefTigerBeetleReserved6(value: TigerBeetleReserved6, roc_host: *RocHost) void {
-    _ = value;
-    _ = roc_host;
-}
-
-/// Increment Roc-owned fields in TigerBeetleReserved6.
-pub fn increfTigerBeetleReserved6(value: TigerBeetleReserved6, amount: isize) void {
-    _ = value;
-    _ = amount;
-}
-
-/// Recursively decrement Roc-owned payloads in TryType28.
-pub fn decrefTryType28(value: TryType28, roc_host: *RocHost) void {
+fn decrefTigerBeetleClientInitResult(value: TigerBeetleClientInitResult, roc_host: *RocHost) void {
     switch (value.tag) {
         .Err => {
-            decrefAddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected(value.payload_err(), roc_host);
+            value.payload_err().decref(roc_host);
         },
         .Ok => {},
     }
 }
 
-/// Increment Roc-owned payloads in TryType28.
-pub fn increfTryType28(value: TryType28, amount: isize) void {
+fn increfTigerBeetleClientInitResult(value: TigerBeetleClientInitResult, amount: isize) void {
     switch (value.tag) {
         .Err => {
-            increfAddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected(value.payload_err(), amount);
+            value.payload_err().incref(amount);
         },
         .Ok => {},
     }
 }
 
-/// Recursively decrement Roc-owned payloads in AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected.
-pub fn decrefAddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected(value: AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected, roc_host: *RocHost) void {
-    _ = roc_host;
-    switch (value.tag) {
-        .AddressInvalid => {},
-        .AddressLimitExceeded => {},
-        .NetworkSubsystem => {},
-        .OutOfMemory => {},
-        .SystemResources => {},
-        .Unexpected => {},
+pub const TigerBeetleClientInitResultRelease = struct {
+    pub fn release(value: TigerBeetleClientInitResult, roc_host: *RocHost) void {
+        value.decref(roc_host);
     }
-}
+};
 
-/// Increment Roc-owned payloads in AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected.
-pub fn increfAddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected(value: AddressInvalidOrAddressLimitExceededOrNetworkSubsystemOrOutOfMemoryOrSystemResourcesOrUnexpected, amount: isize) void {
-    _ = amount;
-    switch (value.tag) {
-        .AddressInvalid => {},
-        .AddressLimitExceeded => {},
-        .NetworkSubsystem => {},
-        .OutOfMemory => {},
-        .SystemResources => {},
-        .Unexpected => {},
+pub const __AnonStruct_784edbe3c92b3574Release = struct {
+    pub fn release(value: __AnonStruct_784edbe3c92b3574, roc_host: *RocHost) void {
+        value.decref(roc_host);
     }
+};
+
+/// Release one owned reference to a `RocList(RocStr)`.
+///
+/// The allocation's final reference is claimed atomically before any element
+/// is read, so concurrent owners cannot skip or duplicate element teardown.
+pub fn decrefListOfStr(value: RocList(RocStr), roc_host: *RocHost) void {
+    value.deinitWith(RocStrRelease, roc_host);
 }
 
-/// Recursively decrement Roc-owned fields in __AnonStruct30.
-pub fn decref__AnonStruct30(value: __AnonStruct30, roc_host: *RocHost) void {
-    value.addresses.decref(roc_host);
+fn rocReleasePolicy(comptime T: type) type {
+    if (T == RocStr) return RocStrRelease;
+    if (T == RocListWith(TigerBeetleCreateAccountResult, false)) return RocListSpineRelease(RocListWith(TigerBeetleCreateAccountResult, false));
+    if (T == RocListWith(TigerBeetleAccount, false)) return RocListSpineRelease(RocListWith(TigerBeetleAccount, false));
+    if (T == RocListWith(TigerBeetleCreateTransferResult, false)) return RocListSpineRelease(RocListWith(TigerBeetleCreateTransferResult, false));
+    if (T == RocListWith(TigerBeetleTransfer, false)) return RocListSpineRelease(RocListWith(TigerBeetleTransfer, false));
+    if (T == RocListWith(u128, false)) return RocListSpineRelease(RocListWith(u128, false));
+    if (T == RocListWith(TigerBeetleAccountBalance, false)) return RocListSpineRelease(RocListWith(TigerBeetleAccountBalance, false));
+    if (T == __AnonStruct_784edbe3c92b3574) return __AnonStruct_784edbe3c92b3574Release;
+    if (T == RocList(RocStr)) return RocListRelease(RocList(RocStr), RocStrRelease);
+    @compileError("generated glue has no recursive release policy for " ++ @typeName(T));
 }
 
-/// Increment Roc-owned fields in __AnonStruct30.
-pub fn incref__AnonStruct30(value: __AnonStruct30, amount: isize) void {
-    value.addresses.incref(amount);
-}
-
-/// Recursively decrement Roc-owned payloads in TryType36.
-pub fn decrefTryType36(value: TryType36, roc_host: *RocHost) void {
-    _ = roc_host;
-    switch (value.tag) {
-        .Err => {},
-        .Ok => {},
-    }
-}
-
-/// Increment Roc-owned payloads in TryType36.
-pub fn increfTryType36(value: TryType36, amount: isize) void {
-    _ = amount;
-    switch (value.tag) {
-        .Err => {},
-        .Ok => {},
-    }
-}
-
-// =============================================================================
 // Runtime Symbols
 //
 // The host defines these linker symbols. Compiled Roc code calls them directly.
-// =============================================================================
 
-pub extern fn roc_alloc(length: usize, alignment: usize) callconv(.c) ?*anyopaque;
+/// Returns `length` bytes aligned to `alignment`. Never returns null: Roc writes through
+/// the result without checking it, so a host that cannot allocate must stop the Roc
+/// program and not return, exactly as `roc_crashed` does.
+pub extern fn roc_alloc(length: usize, alignment: usize) callconv(.c) *anyopaque;
 pub extern fn roc_dealloc(ptr: *anyopaque, alignment: usize) callconv(.c) void;
-pub extern fn roc_realloc(ptr: *anyopaque, new_length: usize, alignment: usize) callconv(.c) ?*anyopaque;
+/// Never returns null, under the same rule as `roc_alloc`.
+pub extern fn roc_realloc(ptr: *anyopaque, new_length: usize, alignment: usize) callconv(.c) *anyopaque;
 pub extern fn roc_dbg(bytes: [*]const u8, len: usize) callconv(.c) void;
 pub extern fn roc_expect_failed(bytes: [*]const u8, len: usize) callconv(.c) void;
+/// Must never return: end the process, or longjmp out of the Roc code that called
+/// it. Roc code traps right after this call, so returning terminates the process.
 pub extern fn roc_crashed(bytes: [*]const u8, len: usize) callconv(.c) void;
 
-// =============================================================================
 // Hosted Symbols
 //
 // The platform host must export these symbols with the exact direct C ABI signatures.
 // Refcounted arguments are owned by the hosted function.
-// =============================================================================
 
 /// Hosted symbol for Host.posix_time!
 /// Roc signature: {} => I128
@@ -1236,55 +1732,97 @@ pub extern fn roc_host_posix_time() callconv(.c) i128;
 
 /// Hosted symbol for Stderr.line!
 /// Roc signature: Str => {}
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
 pub extern fn roc_stderr_line(arg0: RocStr) callconv(.c) void;
 
 /// Hosted symbol for Stdin.line!
 /// Roc signature: {} => Str
+/// The result is owned by Roc: return exactly one owned reference.
 pub extern fn roc_stdin_line() callconv(.c) RocStr;
 
 /// Hosted symbol for Stdout.line!
 /// Roc signature: Str => {}
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
 pub extern fn roc_stdout_line(arg0: RocStr) callconv(.c) void;
+
+/// Hosted symbol for TigerBeetle.Client.init!
+/// Roc signature: { addresses : Str, cluster_id : U128 } => Try(TigerBeetle.Client, [AddressInvalid, AddressLimitExceeded, NetworkSubsystem, OutOfMemory, SystemResources, Unexpected])
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+pub extern fn roc_tb_client_init(arg0: TigerBeetleClientInitArgs) callconv(.c) TigerBeetleClientInitResult;
 
 /// Hosted symbol for TigerBeetle.Client.create_accounts!
 /// Roc signature: TigerBeetle.Client, List(TigerBeetle.Account) => List(TigerBeetle.CreateAccountResult)
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+/// The result is owned by Roc: return exactly one owned reference.
 pub extern fn roc_tb_create_accounts(arg0: RocListWith(TigerBeetleAccount, false)) callconv(.c) RocListWith(TigerBeetleCreateAccountResult, false);
 
 /// Hosted symbol for TigerBeetle.Client.create_transfers!
 /// Roc signature: TigerBeetle.Client, List(TigerBeetle.Transfer) => List(TigerBeetle.CreateTransferResult)
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+/// The result is owned by Roc: return exactly one owned reference.
 pub extern fn roc_tb_create_transfers(arg0: RocListWith(TigerBeetleTransfer, false)) callconv(.c) RocListWith(TigerBeetleCreateTransferResult, false);
 
 /// Hosted symbol for TigerBeetle.Client.get_account_balances!
 /// Roc signature: TigerBeetle.Client, TigerBeetle.AccountFilter => List(TigerBeetle.AccountBalance)
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+/// The result is owned by Roc: return exactly one owned reference.
 pub extern fn roc_tb_get_account_balances(arg0: TigerBeetleAccountFilter) callconv(.c) RocListWith(TigerBeetleAccountBalance, false);
 
 /// Hosted symbol for TigerBeetle.Client.get_account_transfers!
 /// Roc signature: TigerBeetle.Client, TigerBeetle.AccountFilter => List(TigerBeetle.Transfer)
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+/// The result is owned by Roc: return exactly one owned reference.
 pub extern fn roc_tb_get_account_transfers(arg0: TigerBeetleAccountFilter) callconv(.c) RocListWith(TigerBeetleTransfer, false);
-
-/// Hosted symbol for TigerBeetle.Client.init!
-/// Roc signature: { addresses : Str, cluster_id : U128 } => Try(TigerBeetle.Client, [AddressInvalid, AddressLimitExceeded, NetworkSubsystem, OutOfMemory, SystemResources, Unexpected])
-pub extern fn roc_tb_client_init(arg0: TigerBeetleClientInitArgs) callconv(.c) TryType28;
-
-/// Hosted symbol for TigerBeetle.Client.lookup_accounts!
-/// Roc signature: TigerBeetle.Client, List(U128) => List(TigerBeetle.Account)
-pub extern fn roc_tb_lookup_accounts(arg0: RocListWith(u128, false)) callconv(.c) RocListWith(TigerBeetleAccount, false);
-
-/// Hosted symbol for TigerBeetle.Client.lookup_transfers!
-/// Roc signature: TigerBeetle.Client, List(U128) => List(TigerBeetle.Transfer)
-pub extern fn roc_tb_lookup_transfers(arg0: RocListWith(u128, false)) callconv(.c) RocListWith(TigerBeetleTransfer, false);
-
-/// Hosted symbol for TigerBeetle.Client.query_accounts!
-/// Roc signature: TigerBeetle.Client, TigerBeetle.QueryFilter => List(TigerBeetle.Account)
-pub extern fn roc_tb_query_accounts(arg0: TigerBeetleQueryFilter) callconv(.c) RocListWith(TigerBeetleAccount, false);
-
-/// Hosted symbol for TigerBeetle.Client.query_transfers!
-/// Roc signature: TigerBeetle.Client, TigerBeetle.QueryFilter => List(TigerBeetle.Transfer)
-pub extern fn roc_tb_query_transfers(arg0: TigerBeetleQueryFilter) callconv(.c) RocListWith(TigerBeetleTransfer, false);
 
 /// Hosted symbol for TigerBeetle.id!
 /// Roc signature: {} => U128
 pub extern fn roc_tb_id() callconv(.c) u128;
+
+/// Hosted symbol for TigerBeetle.Client.lookup_accounts!
+/// Roc signature: TigerBeetle.Client, List(U128) => List(TigerBeetle.Account)
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+/// The result is owned by Roc: return exactly one owned reference.
+pub extern fn roc_tb_lookup_accounts(arg0: RocListWith(u128, false)) callconv(.c) RocListWith(TigerBeetleAccount, false);
+
+/// Hosted symbol for TigerBeetle.Client.lookup_transfers!
+/// Roc signature: TigerBeetle.Client, List(U128) => List(TigerBeetle.Transfer)
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+/// The result is owned by Roc: return exactly one owned reference.
+pub extern fn roc_tb_lookup_transfers(arg0: RocListWith(u128, false)) callconv(.c) RocListWith(TigerBeetleTransfer, false);
+
+/// Hosted symbol for TigerBeetle.Client.query_accounts!
+/// Roc signature: TigerBeetle.Client, TigerBeetle.QueryFilter => List(TigerBeetle.Account)
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+/// The result is owned by Roc: return exactly one owned reference.
+pub extern fn roc_tb_query_accounts(arg0: TigerBeetleQueryFilter) callconv(.c) RocListWith(TigerBeetleAccount, false);
+
+/// Hosted symbol for TigerBeetle.Client.query_transfers!
+/// Roc signature: TigerBeetle.Client, TigerBeetle.QueryFilter => List(TigerBeetle.Transfer)
+/// Owned arguments. Release each exactly once before returning, unless it is
+/// moved into storage or into the result:
+///     arg0.decref(roc_host);
+/// The result is owned by Roc: return exactly one owned reference.
+pub extern fn roc_tb_query_transfers(arg0: TigerBeetleQueryFilter) callconv(.c) RocListWith(TigerBeetleTransfer, false);
 
 /// Default memory management functions for Roc platforms.
 ///
@@ -1293,7 +1831,7 @@ pub extern fn roc_tb_id() callconv(.c) u128;
 /// allocation size (required because `roc_dealloc` receives no length).
 pub const DefaultAllocators = struct {
     /// Allocate memory for the Roc runtime.
-    pub fn rocAlloc(roc_host: *RocHost, length: usize, alignment: usize) callconv(.c) ?*anyopaque {
+    pub fn rocAlloc(roc_host: *RocHost, length: usize, alignment: usize) callconv(.c) *anyopaque {
         const env: *RocEnv = @ptrCast(@alignCast(roc_host.env));
         const allocator = env.allocator;
 
@@ -1332,7 +1870,7 @@ pub const DefaultAllocators = struct {
     }
 
     /// Reallocate memory, copying existing data to the new allocation.
-    pub fn rocRealloc(roc_host: *RocHost, ptr: *anyopaque, new_length: usize, alignment: usize) callconv(.c) ?*anyopaque {
+    pub fn rocRealloc(roc_host: *RocHost, ptr: *anyopaque, new_length: usize, alignment: usize) callconv(.c) *anyopaque {
         const env: *RocEnv = @ptrCast(@alignCast(roc_host.env));
         const allocator = env.allocator;
 
@@ -1421,11 +1959,9 @@ pub fn makeRocHost(env: *RocEnv) RocHost {
     };
 }
 
-// =============================================================================
 // Provided Symbols
 //
 // Roc exports these symbols from the app with their natural C ABI signatures.
-// =============================================================================
 
 /// Entrypoint: main_for_host!
 pub extern fn roc_main(arg0: RocList(RocStr)) callconv(.c) i32;

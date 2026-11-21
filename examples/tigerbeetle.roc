@@ -23,12 +23,26 @@ demo! : Tb.Client => {}
 demo! = |client| {
 	# Two valid accounts plus one invalid (id 0) to show both result paths.
 	accounts = [
-		Account.init({ id: Tb.id!(), ledger: 700, code: 10 })
-			.flags([History, DebitsMustNotExceedCredits])
-			.user_data_32(47),
-		Account.init({ id: Tb.id!(), ledger: 700, code: 7 })
-			.flags([History]),
-		Account.init({ id: 0, ledger: 700, code: 10 }),
+		Account.{
+			id: Tb.id!(),
+			ledger: 700,
+			code: 10,
+			flags: [History, DebitsMustNotExceedCredits]
+				|> Tb.Account.Flags.build,
+			user_data_32: 47,
+		},
+		Account.{
+			id: Tb.id!(),
+			ledger: 700,
+			code: 7,
+			flags: [History]
+				|> Tb.Account.Flags.build,
+		},
+		Account.{
+			id: 0,
+			ledger: 700,
+			code: 10,
+		},
 	]
 
 	Stdout.line!("Creating ${accounts.len().to_str()} accounts...")
@@ -47,5 +61,4 @@ demo! = |client| {
 
 		Stdout.line!("${timestamp.to_str()} ${Str.inspect(status)}")
 	}
-
 }
