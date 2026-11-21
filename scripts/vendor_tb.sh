@@ -19,7 +19,7 @@ set -euo pipefail
 # to `git rev-parse HEAD`; `tigerbeetle version` shows 65535.0.0+<sha>) and is
 # recorded in platform/targets/TB_COMMIT.
 
-root_dir="$(cd "$(dirname "$0")" && pwd)"
+root_dir="$(cd "$(dirname "$0")/.." && pwd)"
 
 # --- Locate the TigerBeetle checkout -----------------------------------------
 tb="${ROC_TB_TIGERBEETLE_REPO:-}"

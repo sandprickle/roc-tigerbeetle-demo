@@ -10,7 +10,8 @@ set -euxo pipefail
 # Override with TIGERBEETLE=/path/to/tigerbeetle.
 # --development lets it format/start without Direct IO (needed on macOS) and
 # uses smaller cache/batch sizes.
-tb="${TIGERBEETLE:-$(cd "$(dirname "$0")" && pwd)/tigerbeetle-bin/tigerbeetle}"
+cd "$(dirname "$0")/.."
+tb="${TIGERBEETLE:-$(pwd)/tigerbeetle-bin/tigerbeetle}"
 
 rm -rf ./0_0.tigerbeetle
 

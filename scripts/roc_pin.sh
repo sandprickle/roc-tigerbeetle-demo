@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+cd "$(dirname "$0")/.."
+
 ROC_COMMIT="08aae15f3cd7bbd34a1ba762c898610f918c9180"
 ROC_COMMIT_SHORT="${ROC_COMMIT:0:8}"
 NEED_BUILD=false
